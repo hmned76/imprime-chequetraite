@@ -1,0 +1,65 @@
+AssistantAI 2026-08-31  (mis a jour)
+
+== PROJET ==
+Assistant "Hmied" en app Android hybride (HTML/JS embarque dans l'APK,
+interface locale sans serveur, chat/STT/TTS via serveur Flask + tunnel cloudflare).
+
+Utilisateur : Hamdi. GitHub : hmned76 / hmned76@gmail.com, repo prive
+  https://github.com/hmned76/assistantAI (commit 73d4b2a - pas mis a jour).
+
+== INFRA ==
+- Tunnel actuel : https://deaf-involve-chart-telephone.trycloudflare.com (deaf-involve...)
+- Flask local PID (relance a chaque test) sur 127.0.0.1:5000
+- IA : OpenRouter google/gemini-2.5-flash-lite (fonctionne sans credit)
+  Fallback Ollama local qwen2.5 (3b/7b)
+- AUTH_TOKEN = HYPeMpsyWHD6JBk1xJAg8Cbg99e4E_PL (config.py, header X-Auth-Token / cookie auth)
+- Teleph. : ZY32HHPVW2 moto g84 5G via adb (D:\android-sdk\platform-tools\adb.exe)
+- Build : Node 24, Java 21, Gradle 8.7 (C:\Users\Asus\.gradle-dist\gradle-8.7\bin\gradle.bat),
+  SDK build-tools 34.0.0. debuggable true dans buildType release (requis pour run-as prefs).
+
+== VERSION AUTOMATIQUE (nouveau) ==
+- buildNumber stocke dans android\gradle.properties, incremente a chaque build release.
+- versionCode = buildNumber, versionName = 3.0.<buildNumber> (ex 3.0.31).
+- MainActivity.java VERSION vient de BuildConfig.VERSION_NAME (plus de hardcode).
+- buildFeatures.buildConfig = true ajoute (AGP8 sinon pas de BuildConfig).
+- APK signee app-release-3.0.31.apk (la derniere). buildNumber passe a 32 (prochaine = 3.0.32).
+- Signer : apksigner sign --ks %USERPROFILE%\.android\debug.keystore --ks-pass pass:android
+  --key-pass pass:android --out app-release-<v>.apk app-release-unsigned.apk
+
+== TRAVAUX (menus services STEG/Sonede/Telecom/...) ==
+- storage.py : table travaux (id, nom UNIQUE, url, cree_le) + ajouter/lister/supprimer_travail.
+- travaux.py : initialiser_defauts() (steg, sonede, telecom, elfekih, binance),
+  detecter_demande_travail(), extraire_nom(), extraire_url_message() (nouveau),
+  url_pour_nom(), gerer_message().
+- app.py : init defauts au demarrage ; hook travaux.gerer_message() dans _traiter_demande
+  (intention "travail") ; routes protégées par token :
+    GET  /api/travaux            -> liste
+    POST /api/travaux {nom,url}  -> ajouter (prefxe https:// si absent)
+    DELETE /api/travaux/<id>     -> supprimer
+  ; route web /admin (template admin.html, protege par cookie) pour gérer sans code.
+- templates/admin.html : page admin (ajouter/retirer travaux).
+- Interface embarquee assets/index.html : bouton menu ☰ + panneau overlay listant les
+  travaux via fetch /api/travaux (token), clic -> ouvre le site.
+- MainActivity.java : pont ouvrirSite(url) -> ouvre navigateur externe (repli WebView).
+
+== ETAT TESTS ==
+- API /api/travaux GET/POST/DELETE : OK (verifie via tunnel + token).
+- Ajout via chat "ajoute Poste Tunisienne url poste.tn" -> detection "travail", URL
+  https://poste.tn extraite, nom "Poste tunisienne". OK. (base remise a l'etat defaut apres test)
+- APK 3.0.31 installee (versionCode=31, versionName=3.0.31 verifie via dumpsys).
+- Cannot voir le rendu ecran (modele sans input image) -> a verifier visuellement par l'utilisateur.
+
+== PRECEDENT (deja fait) ==
+- Prompt derja enrichi, bug whatsapp corrige, apprentissage du style IA.
+- App hybride embarquee index.html, APK v3.0 installee, prefs poussees via run-as
+  (URL + token + voix ar-xa-x-ard-local + pitch 0.72).
+
+== NEXT (non fait) ==
+- Verifier visuellement le menu Travaux sur le telephone.
+- Compiler la prochaine version (3.0.32) si besoin apres retours.
+- Pousser les changements sur GitHub quand Hamdi donne le feu vert.
+- WEBHOOK whatsapp enregistre sur le tunnel courant (deaf-involve...).
+
+== REFUS ==
+- Messenger/Facebook : refuse (illegal / regles Meta). Telegram propose (bot officiel, legal).
+- Binance : uniquement via les propres cles API de l'utilisateur (avertissement risque).

@@ -1,0 +1,62 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Lecture et incrementation automatique du numero de build.
+// A chaque build release, la version monte (ex: 3.0.31 -> 3.0.32).
+def gradleProps = new Properties()
+if (file('../gradle.properties').exists()) {
+    file('../gradle.properties').withInputStream { gradleProps.load(it) }
+}
+def buildNumber = (gradleProps.getProperty('buildNumber') ?: '31').toInteger()
+
+// Le nom de version d'origine (defini ici une fois)
+def versionBase = '3.0'
+
+android {
+    namespace 'com.hmned76.assistantai'
+    compileSdk 34
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    defaultConfig {
+        applicationId "com.hmned76.assistantai"
+        minSdk 24
+        targetSdk 34
+        versionCode buildNumber
+        versionName versionBase + '.' + buildNumber
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            debuggable true
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+// Incremente automatiquement le numero de build apres chaque compilation release
+gradle.projectsEvaluated {
+    def tacheRelease = tasks.findByName('assembleRelease')
+    if (tacheRelease != null) {
+        tacheRelease.doLast {
+            def props = new Properties()
+            def f = file('../gradle.properties')
+            if (f.exists()) {
+                f.withInputStream { props.load(it) }
+            }
+            props.setProperty('buildNumber', (buildNumber + 1).toString())
+            f.withOutputStream { props.store(it, '# auto-increment build number') }
+        }
+    }
+}
+
+dependencies {
+}

@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ nom_assistant }} - Connexion</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      color: #e8eef1;
+    }
+    .carte {
+      background: rgba(255,255,255,0.06);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 20px;
+      padding: 40px 34px; width: 340px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    }
+    .logo { font-size: 52px; text-align: center; margin-bottom: 8px; }
+    h1 { font-size: 20px; text-align: center; margin-bottom: 4px; }
+    .sous { text-align: center; color: #9fb6bd; font-size: 13px; margin-bottom: 26px; }
+    label { display: block; font-size: 12px; color: #9fb6bd; margin-bottom: 6px; }
+    input {
+      width: 100%; padding: 13px 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(0,0,0,0.3); color: #fff; font-size: 15px; margin-bottom: 18px; outline: none;
+    }
+    input:focus { border-color: #4cc9f0; }
+    button {
+      width: 100%; padding: 14px; border: none; border-radius: 12px; background: #4cc9f0;
+      color: #062129; font-size: 16px; font-weight: 700; cursor: pointer; transition: 0.2s;
+    }
+    button:hover { background: #72d8f8; transform: translateY(-1px); }
+    .erreur { color: #ff6b6b; font-size: 13px; text-align: center; margin-bottom: 14px; display: none; }
+  </style>
+</head>
+<body>
+  <div class="carte">
+    <div class="logo">🤖</div>
+    <h1>{{ nom_assistant }}</h1>
+    <div class="sous">Entrez le mot de passe pour accéder à l'assistant</div>
+    <form id="form">
+      <label for="code">Mot de passe</label>
+      <input type="password" id="code" placeholder="••••••••" autocomplete="current-password">
+      <div class="erreur" id="err">Mot de passe incorrect</div>
+      <button type="submit">🔓 Se connecter</button>
+    </form>
+  </div>
+  <script>
+    const code = document.getElementById('code');
+    const err = document.getElementById('err');
+    document.getElementById('form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      err.style.display = 'none';
+      const rep = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: code.value })
+      });
+      if (rep.ok) { window.location.href = '/'; }
+      else { err.style.display = 'block'; }
+    });
+  </script>
+</body>
+</html>

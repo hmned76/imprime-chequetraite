@@ -1,0 +1,37 @@
+# Android build outputs
+android/app/build/
+android/build/
+.gradle/
+*.apk
+*.apksig
+*.aab
+local.properties
+*.iml
+.cxx/
+# Gradle wrapper
+gradle/wrapper/
+# OS files
+.DS_Store
+Thumbs.db
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+# Build artifacts
+app/build/
+build/
+# Node modules
+node_modules/
+# Distribution
+dist/
+# Logs
+*.log
+# Environment files
+.env
+*.env
+EOF

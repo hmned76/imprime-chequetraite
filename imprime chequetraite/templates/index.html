@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>Hmied حميد – AssistantAI</title>
+  <style>
+    :root {
+      --bg: #0b1120;
+      --bg2: #111a2e;
+      --panel: rgba(255,255,255,.04);
+      --panel-border: rgba(255,255,255,.08);
+      --text: #e2e8f0;
+      --muted: #8ea0b8;
+      --accent: #38bdf8;
+      --accent2: #818cf8;
+      --user-bubble: linear-gradient(135deg,#2563eb,#4f46e5);
+      --green: #34d399;
+      --red: #f43f5e;
+    }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    html,body { height:100%; }
+    body {
+      font-family:'Segoe UI',-apple-system,Roboto,Arial,sans-serif;
+      background:
+        radial-gradient(1000px 500px at 10% -10%, rgba(56,189,248,.10), transparent 60%),
+        radial-gradient(800px 400px at 100% 0%, rgba(129,140,248,.10), transparent 60%),
+        var(--bg);
+      color:var(--text);
+      height:100dvh; display:flex; flex-direction:column;
+      -webkit-text-size-adjust:100%;
+    }
+    header {
+      background:rgba(17,26,46,.85); backdrop-filter:blur(12px);
+      border-bottom:1px solid var(--panel-border);
+      padding:12px 16px; display:flex; align-items:center; gap:12px;
+      position:relative; z-index:5;
+    }
+    header .avatar {
+      width:42px; height:42px; border-radius:50%;
+      background:linear-gradient(135deg,var(--accent),var(--accent2));
+      display:flex; align-items:center; justify-content:center;
+      font-weight:700; color:#fff; flex:0 0 auto;
+      box-shadow:0 4px 16px rgba(56,189,248,.35);
+    }
+    header .titre { min-width:0; flex:1; }
+    header h1 { font-size:16px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    header span { font-size:12px; color:var(--muted); display:flex; align-items:center; gap:6px; }
+    .statu-pil { width:8px; height:8px; border-radius:50%; background:var(--green); display:inline-block; animation:puls 2s infinite; }
+    header .droite { display:flex; align-items:center; gap:6px; flex:0 0 auto; }
+    header .hb {
+      border:1px solid var(--panel-border); border-radius:12px;
+      background:var(--panel); color:var(--accent); font-size:16px;
+      width:38px; height:38px; cursor:pointer; flex:0 0 auto; transition:.2s;
+    }
+    header .hb:hover { background:rgba(255,255,255,.09); transform:translateY(-1px); }
+    header .hb.actif { color:#fbbf24; border-color:rgba(251,191,36,.4); }
+    header .ver { font-size:10px; color:var(--accent); background:var(--panel); border:1px solid var(--panel-border); border-radius:10px; padding:3px 8px; font-weight:700; }
+
+    #messages {
+      flex:1; overflow-y:auto; padding:20px 16px;
+      display:flex; flex-direction:column; gap:12px;
+      -webkit-overflow-scrolling:touch;
+    }
+    .msg {
+      max-width:80%; padding:11px 15px; border-radius:16px;
+      font-size:15px; line-height:1.5; word-wrap:break-word;
+      animation:apparait .25s ease;
+    }
+    .user { align-self:flex-end; background:var(--user-bubble); color:#fff; border-bottom-right-radius:5px; box-shadow:0 4px 14px rgba(37,99,235,.25); }
+    .assistant { align-self:flex-start; background:var(--panel); border:1px solid var(--panel-border); color:var(--text); border-bottom-left-radius:5px; backdrop-filter:blur(6px); }
+    .msg .badge { display:inline-block; font-size:10.5px; background:rgba(255,255,255,.15); color:#cbd5e1; border-radius:8px; padding:2px 8px; margin-left:6px; font-weight:600; }
+    .info { text-align:center; color:var(--muted); font-size:12.5px; margin:8px 0; }
+
+    #barre {
+      display:flex; gap:8px; padding:12px;
+      background:rgba(17,26,46,.85); backdrop-filter:blur(12px);
+      border-top:1px solid var(--panel-border);
+    }
+    #saisie {
+      flex:1; min-width:0; padding:13px 16px; border:1px solid var(--panel-border);
+      border-radius:26px; background:var(--bg2); color:var(--text); font-size:16px; outline:none;
+      transition:border-color .2s;
+    }
+    #saisie:focus { border-color:var(--accent); }
+    #envoyer {
+      border:none; border-radius:26px;
+      background:linear-gradient(135deg,var(--accent),var(--accent2));
+      color:#fff; padding:0 22px; font-weight:600; cursor:pointer; flex:0 0 auto; transition:.2s;
+      box-shadow:0 4px 14px rgba(56,189,248,.3);
+    }
+    #envoyer:hover { transform:translateY(-1px); filter:brightness(1.1); }
+    #envoyer:active { transform:translateY(0); }
+
+    button.vocal {
+      border:1px solid var(--panel-border); border-radius:50%;
+      background:var(--bg2); color:var(--accent); font-size:21px;
+      width:50px; height:50px; flex:0 0 auto; cursor:pointer; transition:.2s;
+    }
+    button.vocal:hover { border-color:var(--accent); }
+    button.vocal.actif { background:var(--red); color:#fff; border-color:var(--red); animation:pulsMic 1.2s infinite; }
+    button.voix {
+      border:1px solid var(--panel-border); border-radius:26px;
+      background:var(--bg2); color:var(--muted); font-size:18px; width:50px; flex:0 0 auto; cursor:pointer; transition:.2s;
+    }
+    button.voix.actif { color:#fbbf24; border-color:rgba(251,191,36,.4); }
+    @keyframes puls { 0%,100%{opacity:1;} 50%{opacity:.35;} }
+    @keyframes pulsMic { 0%,100%{box-shadow:0 0 0 0 rgba(244,63,94,.5);} 50%{box-shadow:0 0 0 10px rgba(244,63,94,0);} }
+    @keyframes apparait { from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:none;} }
+
+    #statut {
+      font-size:12.5px; color:var(--green); padding:4px 18px 0; display:none; text-align:center;
+    }
+    .reload { font-size:12px; color:var(--muted); text-align:center; padding:8px; background:var(--bg); border-top:1px solid var(--panel-border); }
+    .indicateur { display:inline-flex; gap:4px; align-items:center; padding:2px 0; }
+    .indicateur span { width:6px; height:6px; border-radius:50%; background:var(--accent); animation:rebond 1.2s infinite; }
+    .indicateur span:nth-child(2){ animation-delay:.2s; }
+    .indicateur span:nth-child(3){ animation-delay:.4s; }
+    @keyframes rebond { 0%,100%{ transform:translateY(0); opacity:.4;} 50%{ transform:translateY(-4px); opacity:1;} }
+
+    .menu {
+      position:fixed; top:0; left:0; right:0; bottom:0; z-index:20;
+      background:rgba(11,17,32,.96); backdrop-filter:blur(14px);
+      display:none; flex-direction:column; padding:18px 16px;
+    }
+    .menu.ouvert { display:flex; animation:apparait .2s ease; }
+    .menu-tete { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+    .menu-tete span { font-size:17px; font-weight:700; }
+    .menu-hint { color:var(--muted); font-size:12.5px; margin-bottom:16px; line-height:1.5; }
+    .menuliste { display:flex; flex-direction:column; gap:10px; overflow-y:auto; flex:1; }
+    .menuitem {
+      display:flex; align-items:center; gap:12px; padding:14px;
+      background:var(--bg2); border:1px solid var(--border); border-radius:14px;
+      cursor:pointer; transition:.15s;
+    }
+    .menuitem:active { transform:scale(.98); background:rgba(255,255,255,.06); }
+    .menuitem .ico {
+      width:40px; height:40px; border-radius:11px; flex:0 0 auto;
+      background:linear-gradient(135deg,var(--accent),var(--accent2));
+      display:flex; align-items:center; justify-content:center; font-size:19px; color:#fff;
+    }
+    .menuitem .mn { font-weight:600; }
+    .menuitem .mu { font-size:11.5px; color:var(--muted); word-break:break-all; }
+    .menu .vide { color:var(--muted); text-align:center; padding:30px; font-size:14px; }
+  </style>
+</head>
+<body>
+  <header>
+    <button id="menubtn" class="hb" title="Menu des travaux">☰</button>
+    <div class="avatar">AI</div>
+    <div class="titre">
+      <h1 id="titreassistant">Hmied حميد</h1>
+      <span><span class="statu-pil"></span>&nbsp; en ligne • IA : serveur</span>
+    </div>
+    <div class="droite">
+      <button id="voix" class="hb" title="Lire les réponses à voix haute">🔈</button>
+      <button id="voixchoix" class="hb" title="Choisir la voix de Hmied">🎛️</button>
+      <div class="ver" id="ver">v3.0</div>
+    </div>
+  </header>
+
+  <div id="menu" class="menu">
+    <div class="menu-tete">
+      <span>🛠️ Travaux de Hmied</span>
+      <button class="hb" id="menufermer" title="Fermer">✕</button>
+    </div>
+    <div class="menu-hint">Appuie pour ouvrir le site. Ajoute des travaux via la page admin ou en disant « ajoute STEG ».</div>
+    <div id="menuliste" class="menuliste"><div class="vide">Chargement…</div></div>
+  </div>
+
+  <div id="messages">
+    <div class="info" id="messagedaccueil">Hmied est prêt. Parle normalement en Tunisien :)</div>
+  </div>
+
+  <div id="barre">
+    <input id="saisie" type="text" placeholder="Ex : prends rendez-vous demain à 10h" autocomplete="off">
+    <button id="micro" class="vocal" title="Parler en tunisien (APK)">🎤</button>
+    <button id="envoyer">Envoyer</button>
+  </div>
+  <div id="statut">🎤 Écoute… parle, puis appuie 🎤 pour arrêter</div>
+  <div class="reload">💾 Conversations sauvegardées • IA distante • fonctionne sur PC et APK</div>
+
+  <script>
+    const saisie = document.getElementById('saisie');
+    const envoyer = document.getElementById('envoyer');
+    const messages = document.getElementById('messages');
+
+    // Lecture du son quand on est dans un navigateur (PC) : TTS via le serveur
+    let audioElem = document.createElement('audio');
+    async function jouerTTS(texte) {
+      try {
+        const r = await fetch(baseUrl('/api/tts'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Auth-Token': token() },
+          body: JSON.stringify({ texte })
+        });
+        if (!r.ok) return;
+        const blob = await r.blob();
+        audioElem.src = URL.createObjectURL(blob);
+        audioElem.play().catch(() => {});
+      } catch (e) {}
+    }
+
+    // Identifie l'adresse du serveur selon la plateforme :
+    //  - APK : AndroidIOS.getUrl() (l'adresse configuree)
+    //  - PC/navigateur : meme origine (valeur vide -> appels relatifs)
+    function baseUrl(suffixe) {
+      let base = '';
+      if (window.AndroidIOS && typeof AndroidIOS.getUrl === 'function') {
+        try { base = (AndroidIOS.getUrl() || '').replace(/\/+$/, ''); } catch (e) {}
+      }
+      return base + suffixe;
+    }
+    function version() {
+      if (window.AndroidIOS && typeof AndroidIOS.getVersion === 'function') {
+        try { document.getElementById('ver').textContent = AndroidIOS.getVersion(); return; } catch (e) {}
+      }
+      // Sur PC/navigateur : questionne le serveur pour la meme version que l'APK
+      try {
+        fetch('/api/infos')
+          .then(r => r.ok ? r.json() : null)
+          .then(d => { if (d && d.version) document.getElementById('ver').textContent = d.version; })
+          .catch(() => {});
+      } catch (e) {}
+    }
+    function token() {
+      if (window.AndroidIOS && typeof AndroidIOS.getToken === 'function') {
+        try { return AndroidIOS.getToken() || ''; } catch (e) {}
+      }
+      return '';
+    }
+    window.__refreshUrl = function() {
+      try { location.reload(); } catch (e) {}
+    };
+
+    function ajouter(role, texte, badge) {
+      const div = document.createElement('div');
+      div.className = 'msg ' + role;
+      div.textContent = texte;
+      if (badge) {
+        const b = document.createElement('span');
+        b.className = 'badge';
+        b.textContent = badge;
+        div.appendChild(b);
+      }
+      messages.appendChild(div);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    let iaEnAttente = false;
+
+    function afficherReponse(texte, intention) {
+      if (iaEnAttente) {
+        const derniers = messages.querySelectorAll('.msg.assistant');
+        if (derniers.length) {
+          const last = derniers[derniers.length - 1];
+          if (last && last.querySelector('.indicateur')) last.remove();
+        }
+        iaEnAttente = false;
+      }
+      ajouter('assistant', texte || 'Erreur de réponse.', intention);
+      sauver('assistant', texte || '');
+      if (lirre) {
+        if (window.AndroidIOS && typeof AndroidIOS.parler === 'function') {
+          try { AndroidIOS.parler(texte || ''); } catch (e) {}
+        } else if (texte) {
+          jouerTTS(texte);
+        }
+      }
+      if (window.AndroidIOS && typeof AndroidIOS.synchroniser === 'function') {
+        try { AndroidIOS.synchroniser(); } catch (e) {}
+      }
+    }
+
+    function ajouterAttente() {
+      const attente = document.createElement('div');
+      attente.className = 'msg assistant';
+      attente.innerHTML = '<span class="indicateur"><span></span><span></span><span></span></span>';
+      messages.appendChild(attente);
+      messages.scrollTop = messages.scrollHeight;
+      iaEnAttente = true;
+    }
+
+    window.__iaReponse = (reponse, meta) => {
+      afficherReponse(reponse, 'ia');
+    };
+
+    // Execute les actions renvoyees par le serveur (appel telephonique, ouverture site...)
+    function executerActions(actions) {
+      (actions || []).forEach(a => {
+        if (!a || !a.type) return;
+        if (a.type === 'call' && a.resultat && a.resultat.numero) {
+          if (window.AndroidIOS && typeof AndroidIOS.appeler === 'function') {
+            try { AndroidIOS.appeler(a.resultat.numero); } catch (e) {}
+          } else {
+            try { window.location.href = 'tel:' + a.resultat.numero; } catch (e) {}
+          }
+        } else if (a.type === 'site' && a.resultat && a.resultat.url) {
+          if (window.AndroidIOS && typeof AndroidIOS.ouvrirSite === 'function') {
+            try { AndroidIOS.ouvrirSite(a.resultat.url); } catch (e) {}
+          } else {
+            try { window.open(a.resultat.url, '_blank'); } catch (e) {}
+          }
+        }
+      });
+    }
+
+    async function envoi() {
+      const texte = saisie.value.trim();
+      if (!texte) return;
+      saisie.value = '';
+      ajouter('user', texte);
+      sauver('user', texte);
+
+      // 1) Mode autonome (APK) : l'app va chercher la reponse elle-meme.
+      if (window.AndroidIOS && typeof AndroidIOS.poserQuestion === 'function') {
+        ajouterAttente();
+        try { AndroidIOS.poserQuestion(texte); } catch (e) {
+          afficherReponse('Erreur IA : ' + (e.message || ''), '');
+        }
+        return;
+      }
+
+      // 2) PC/navigateur : appel direct au serveur.
+      ajouterAttente();
+      try {
+        const resp = await fetch(baseUrl('/api/chat'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Auth-Token': token() },
+          body: JSON.stringify({ message: texte })
+        });
+        if (!resp.ok) {
+          const d = await resp.json().catch(() => ({}));
+          throw new Error(d.erreur || 'HTTP ' + resp.status);
+        }
+        const data = await resp.json();
+        afficherReponse(data.reponse || 'Erreur de réponse.', data.intention);
+        executerActions(data.actions || []);
+      } catch (e) {
+        afficherReponse('Impossible de joindre le serveur : ' + (e.message || ''), '');
+      }
+    }
+
+    envoyer.addEventListener('click', envoi);
+    saisie.addEventListener('keydown', e => { if (e.key === 'Enter') envoi(); });
+    messages.scrollTop = messages.scrollHeight;
+    version();
+
+    function chargerHistorique() {
+      if (window.AndroidIOS && typeof AndroidIOS.chargerHistorique === 'function') {
+        try {
+          const arr = JSON.parse(AndroidIOS.chargerHistorique() || '[]');
+          messages.innerHTML = '';
+          arr.forEach(m => {
+            const msg = document.createElement('div');
+            msg.className = 'msg ' + (m.role === 'user' ? 'user' : 'assistant');
+            msg.textContent = m.texte || '';
+            messages.appendChild(msg);
+          });
+          messages.scrollTop = messages.scrollHeight;
+        } catch (e) {}
+      } else {
+        // PC/navigateur : on restaure l'historique sauvegarde sur le serveur.
+        fetch(baseUrl('/api/conversations'), { headers: { 'X-Auth-Token': token() } })
+          .then(r => r.ok ? r.json() : [])
+          .then(arr => {
+            if (!arr || !arr.length) return;
+            messages.innerHTML = '';
+            arr.forEach(m => {
+              const msg = document.createElement('div');
+              msg.className = 'msg ' + (m.role === 'user' ? 'user' : 'assistant');
+              msg.textContent = m.contenu || '';
+              messages.appendChild(msg);
+            });
+            messages.scrollTop = messages.scrollHeight;
+          })
+          .catch(() => {});
+      }
+    }
+
+    function sauver(role, texte) {
+      if (window.AndroidIOS && typeof AndroidIOS.sauverMessage === 'function') {
+        try { AndroidIOS.sauverMessage(role, texte || ''); } catch (e) {}
+      }
+      // PC/navigateur : chaque message est sauvegarde sur le serveur.
+      fetch(baseUrl('/api/historique'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Auth-Token': token() },
+        body: JSON.stringify({ role, contenu: texte })
+      }).catch(() => {});
+    }
+
+    chargerHistorique();
+    if (window.AndroidIOS && typeof AndroidIOS.synchroniser === 'function') {
+      try { AndroidIOS.synchroniser(); } catch (e) {}
+    }
+
+    const menu = document.getElementById('menu');
+    const menubtn = document.getElementById('menubtn');
+    const menufermer = document.getElementById('menufermer');
+    const menuliste = document.getElementById('menuliste');
+
+    function ouvrirMenu() { menu.classList.add('ouvert'); chargerTravaux(); }
+    function fermerMenu() { menu.classList.remove('ouvert'); }
+    menubtn.addEventListener('click', ouvrirMenu);
+    menufermer.addEventListener('click', fermerMenu);
+
+    function ouvrirSiteMarcher(v) {
+      if (window.AndroidIOS && typeof AndroidIOS.ouvrirSite === 'function') {
+        AndroidIOS.ouvrirSite(v);
+      } else {
+        window.open(v, '_blank');
+      }
+    }
+
+    async function chargerTravaux() {
+      try {
+        const r = await fetch(baseUrl('/api/travaux'), { headers: { 'X-Auth-Token': token() } });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const data = await r.json();
+        if (!data.length) { menuliste.innerHTML = '<div class="vide">Aucun travail. Ajoute-en dans la page admin ou dis « ajoute STEG ».</div>'; return; }
+        menuliste.innerHTML = '';
+        data.forEach(t => {
+          const it = document.createElement('div');
+          it.className = 'menuitem';
+          const lettre = (t.nom || '?').charAt(0).toUpperCase();
+          it.innerHTML = '<div class="ico">' + lettre + '</div>' +
+            '<div><div class="mn">' + t.nom + '</div><div class="mu">' + t.url + '</div></div>';
+          it.addEventListener('click', () => { if (t.url) ouvrirSiteMarcher(t.url); });
+          menuliste.appendChild(it);
+        });
+      } catch (e) {
+        menuliste.innerHTML = '<div class="vide">Erreur chargement : ' + (e.message || '') + '</div>';
+      }
+    }
+
+    const micro = document.getElementById('micro');
+    const voixBtn = document.getElementById('voix');
+    const voixChoixBtn = document.getElementById('voixchoix');
+    const statut = document.getElementById('statut');
+    let lirre = false;
+    let rec = null;
+
+    voixBtn.addEventListener('click', () => {
+      lirre = !lirre;
+      voixBtn.classList.toggle('actif', lirre);
+      voixBtn.textContent = lirre ? '🔊' : '🔈';
+    });
+
+    voixChoixBtn.addEventListener('click', () => {
+      if (window.AndroidIOS && typeof AndroidIOS.choisirVoix === 'function') {
+        AndroidIOS.choisirVoix();
+      } else {
+        ajouter('assistant', '🎛️ Le choix de voix est disponible dans l\'APK.');
+      }
+    });
+
+    function arreterEcoutE() {
+      micro.classList.remove('actif');
+      statut.style.display = 'none';
+      if (rec) { try { rec.stop(); } catch (e) {} rec = null; }
+    }
+
+    micro.addEventListener('click', () => {
+      if (micro.classList.contains('actif')) {
+        if (window.AndroidIOS && typeof AndroidIOS.arreter === 'function') AndroidIOS.arreter();
+        arreterEcoutE();
+        return;
+      }
+      if (window.AndroidIOS && typeof AndroidIOS.ecouter === 'function') {
+        AndroidIOS.ecouter();
+        micro.classList.add('actif');
+        statut.style.display = 'block';
+      } else if (window.SpeechRecognition || window.webkitSpeechRecognition) {
+        const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        rec = new SR();
+        rec.lang = 'ar-TN';
+        rec.onresult = e => { saisie.value = e.results[0][0].transcript; arreterEcoutE(); envoi(); };
+        rec.onend = arreterEcoutE;
+        rec.onerror = arreterEcoutE;
+        try { rec.start(); micro.classList.add('actif'); statut.style.display = 'block'; } catch (e) { arreterEcoutE(); }
+      } else {
+        ajouter('assistant', '🎤 Reconnaissance vocale non disponible (utilise le micro APK).');
+      }
+    });
+
+    window.__asrResult = (t) => {
+      arreterEcoutE();
+      saisie.value = t || '';
+      if (t) envoi();
+    };
+    window.__asrInterim = (t) => {
+      if (t) saisie.value = t;
+    };
+    window.__asrErreur = (m) => {
+      arreterEcoutE();
+      ajouter('assistant', '🎤 ' + (m || 'Erreur de reconnaissance vocale.'));
+    };
+  </script>
+</body>
+</html>

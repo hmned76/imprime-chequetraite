@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ nom_assistant }} – Travaux</title>
+  <style>
+    :root {
+      --bg: #0b1120; --bg2: #111a2e; --panel: rgba(255,255,255,.04);
+      --border: rgba(255,255,255,.08); --text: #e2e8f0; --muted: #8ea0b8;
+      --accent: #38bdf8; --accent2: #818cf8; --green: #34d399; --red: #f43f5e;
+    }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body {
+      font-family:'Segoe UI',-apple-system,Roboto,Arial,sans-serif;
+      background: radial-gradient(900px 400px at 10% -10%, rgba(56,189,248,.10), transparent 60%), var(--bg);
+      color:var(--text); min-height:100vh; padding:24px 16px 50px;
+    }
+    h1 { font-size:22px; margin-bottom:6px; display:flex; align-items:center; gap:10px; }
+    .sous { color:var(--muted); font-size:13px; margin-bottom:22px; }
+    .carte {
+      background:var(--bg2); border:1px solid var(--border); border-radius:16px;
+      padding:18px; margin-bottom:16px;
+    }
+    .carte h2 { font-size:15px; margin-bottom:14px; color:var(--accent); }
+    .form { display:flex; gap:10px; flex-wrap:wrap; }
+    input, button { font-size:15px; padding:11px 14px; border-radius:12px; border:1px solid var(--border); }
+    input { flex:1; min-width:140px; background:var(--bg); color:var(--text); outline:none; }
+    input:focus { border-color:var(--accent); }
+    button { cursor:pointer; background:linear-gradient(135deg,var(--accent),var(--accent2)); color:#fff; font-weight:600; border:none; }
+    button.suppr { background:transparent; border:1px solid var(--red); color:var(--red); padding:8px 12px; font-size:13px; }
+    .liste { display:flex; flex-direction:column; gap:10px; }
+    .item {
+      display:flex; align-items:center; justify-content:space-between; gap:12px;
+      background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:12px 14px;
+    }
+    .item .info { min-width:0; }
+    .item .nom { font-weight:600; }
+    .item .url { font-size:12px; color:var(--muted); word-break:break-all; }
+    .vide { color:var(--muted); text-align:center; padding:20px; font-size:14px; }
+    #msg { font-size:13px; margin-top:12px; }
+    .ok { color:var(--green); } .err { color:var(--red); }
+    a.back { display:inline-block; margin-bottom:18px; color:var(--accent); text-decoration:none; font-size:14px; }
+    .badge { font-size:11px; color:var(--accent); background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:2px 8px; }
+  </style>
+</head>
+<body>
+  <a class="back" href="/">← Retour au chat</a>
+  <h1>🛠️ Travaux de {{ nom_assistant }}</h1>
+  <div class="sous">Gère les services accessibles depuis le menu de l'app. <span class="badge" id="ver"></span></div>
+
+  <div class="carte">
+    <h2>➕ Ajouter un travail</h2>
+    <div class="form">
+      <input id="nom" placeholder="Nom (ex: STEG)" autocomplete="off">
+      <input id="url" placeholder="URL (ex: steg.com.tn)" autocomplete="off">
+      <button onclick="ajouter()">Ajouter</button>
+    </div>
+    <div id="msg"></div>
+  </div>
+
+  <div class="carte">
+    <h2>📋 Liste des travaux</h2>
+    <div id="liste" class="liste"><div class="vide">Chargement…</div></div>
+  </div>
+
+  <script>
+    function msg(t, c) { const m = document.getElementById('msg'); m.textContent = t; m.className = c; }
+    async function charger() {
+      try {
+        const r = await fetch('/api/travaux');
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const data = await r.json();
+        const box = document.getElementById('liste');
+        if (!data.length) { box.innerHTML = '<div class="vide">Aucun travail pour l\'instant.</div>'; return; }
+        box.innerHTML = '';
+        data.forEach(t => {
+          const item = document.createElement('div');
+          item.className = 'item';
+          item.innerHTML = '<div class="info"><div class="nom">' + t.nom + '</div><div class="url">' + t.url + '</div></div>' +
+            '<button class="suppr" onclick="supprimer(' + t.id + ')">✕ Retirer</button>';
+          box.appendChild(item);
+        });
+      } catch (e) {
+        document.getElementById('liste').innerHTML = '<div class="vide">Erreur : ' + (e.message || '') + '</div>';
+      }
+    }
+    function ajouter() {
+      const nom = document.getElementById('nom').value.trim();
+      const url = document.getElementById('url').value.trim();
+      if (!nom || !url) { msg('Remplis le nom et l\'URL.', 'err'); return; }
+      fetch('/api/travaux', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nom, url })
+      }).then(r => {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      }).then(() => {
+        msg('Travail ajouté ✔', 'ok');
+        document.getElementById('nom').value = '';
+        document.getElementById('url').value = '';
+        charger();
+      }).catch(e => msg('Erreur : ' + e.message, 'err'));
+    }
+    function supprimer(id) {
+      if (!confirm('Retirer ce travail du menu ?')) return;
+      fetch('/api/travaux/' + id, { method: 'DELETE' })
+        .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+        .then(() => { msg('Travail retiré.', 'ok'); charger(); })
+        .catch(e => msg('Erreur : ' + e.message, 'err'));
+    }
+    if (window.AndroidIOS && typeof AndroidIOS.getVersion === 'function') {
+      try { document.getElementById('ver').textContent = AndroidIOS.getVersion(); } catch (e) {}
+    }
+    charger();
+  </script>
+</body>
+</html>
