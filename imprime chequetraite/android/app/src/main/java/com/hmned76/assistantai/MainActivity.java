@@ -42,7 +42,7 @@ public class MainActivity extends Activity {
     // Mode AUTONOME (Option A) : l'app appelle directement l'IA sur OpenRouter,
     // SANS avoir besoin du PC ni du tunnel. Le PC (serveur Flask) est uniquement
     // utilise pour SYNCHRONISER les discussions quand il est allume.
-    private static final String OPENROUTER_KEY = "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";
+    private static final String OPENROUTER_KEY = "";
     private static final String OPENROUTER_MODEL = "minimax/minimax-m3:free";
     private static final String OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
     private static final String TAG = "AssistantAI";

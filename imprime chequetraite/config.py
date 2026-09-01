@@ -31,7 +31,7 @@ AUTH_WEB_FORM = True
 # Inscription : https://openrouter.ai  ->  cle "sk-or-..."
 # Colle ta cle ici ; laisse vide pour utiliser Ollama local.
 # Priorite de marche (ia.py) : -> Ollama local en SECOURS, OpenRouter :free en quotidien.
-OPENROUTER_API_KEY = "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"
+OPENROUTER_API_KEY = ""
 # Modele GRATUIT : jamais de 402 tant que le compte a droit aux modeles :free.
 # (le compte est en "free tier" sans credit -> les modeles payants renvoient 402)
 OPENROUTER_MODEL = "minimax/minimax-m3:free"
