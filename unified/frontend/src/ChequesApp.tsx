@@ -1,4 +1,4 @@
-﻿import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import { FaPrint, FaCheck, FaFileInvoice, FaExchangeAlt, FaHistory, FaFileExcel, FaEye, FaBuilding, FaUser, FaCog, FaPlus, FaTrash, FaFolderOpen } from 'react-icons/fa'
 
 const RE_ARA = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/
@@ -11,9 +11,9 @@ function detectDirection(t: string): 'ltr' | 'rtl' {
   return estArabe(t) ? 'rtl' : 'ltr'
 }
 
-const UN_AR = ['ØµÙØ±', 'ÙˆØ§Ø­Ø¯', 'Ø§Ø«Ù†Ø§Ù†', 'Ø«Ù„Ø§Ø«Ø©', 'Ø£Ø±Ø¨Ø¹Ø©', 'Ø®Ù…Ø³Ø©', 'Ø³ØªØ©', 'Ø³Ø¨Ø¹Ø©', 'Ø«Ù…Ø§Ù†ÙŠØ©', 'ØªØ³Ø¹Ø©', 'Ø¹Ø´Ø±Ø©', 'Ø£Ø­Ø¯ Ø¹Ø´Ø±', 'Ø§Ø«Ù†Ø§ Ø¹Ø´Ø±', 'Ø«Ù„Ø§Ø«Ø© Ø¹Ø´Ø±', 'Ø£Ø±Ø¨Ø¹Ø© Ø¹Ø´Ø±', 'Ø®Ù…Ø³Ø© Ø¹Ø´Ø±', 'Ø³ØªØ© Ø¹Ø´Ø±', 'Ø³Ø¨Ø¹Ø© Ø¹Ø´Ø±', 'Ø«Ù…Ø§Ù†ÙŠØ© Ø¹Ø´Ø±', 'ØªØ³Ø¹Ø© Ø¹Ø´Ø±']
-const TENS_AR = ['', '', 'Ø¹Ø´Ø±ÙˆÙ†', 'Ø«Ù„Ø§Ø«ÙˆÙ†', 'Ø£Ø±Ø¨Ø¹ÙˆÙ†', 'Ø®Ù…Ø³ÙˆÙ†', 'Ø³ØªÙˆÙ†', 'Ø³Ø¨Ø¹ÙˆÙ†', 'Ø«Ù…Ø§Ù†ÙˆÙ†', 'ØªØ³Ø¹ÙˆÙ†']
-const HUND_AR = ['', 'Ù…Ø§Ø¦Ø©', 'Ù…Ø§Ø¦ØªØ§Ù†', 'Ø«Ù„Ø§Ø«Ù…Ø§Ø¦Ø©', 'Ø£Ø±Ø¨Ø¹Ù…Ø§Ø¦Ø©', 'Ø®Ù…Ø³Ù…Ø§Ø¦Ø©', 'Ø³ØªÙ…Ø§Ø¦Ø©', 'Ø³Ø¨Ø¹Ù…Ø§Ø¦Ø©', 'Ø«Ù…Ø§Ù†Ù…Ø§Ø¦Ø©', 'ØªØ³Ø¹Ù…Ø§Ø¦Ø©']
+const UN_AR = ['صفر', 'واحد', 'اثنان', 'ثلاثة', 'أربعة', 'خمسة', 'ستة', 'سبعة', 'ثمانية', 'تسعة', 'عشرة', 'أحد عشر', 'اثنا عشر', 'ثلاثة عشر', 'أربعة عشر', 'خمسة عشر', 'ستة عشر', 'سبعة عشر', 'ثمانية عشر', 'تسعة عشر']
+const TENS_AR = ['', '', 'عشرون', 'ثلاثون', 'أربعون', 'خمسون', 'ستون', 'سبعون', 'ثمانون', 'تسعون']
+const HUND_AR = ['', 'مائة', 'مائتان', 'ثلاثمائة', 'أربعمائة', 'خمسمائة', 'ستمائة', 'سبعمائة', 'ثمانمائة', 'تسعمائة']
 
 function moins1000Ar(n: number): string {
   let s = ''
@@ -21,9 +21,9 @@ function moins1000Ar(n: number): string {
   const r = n % 100
   if (h) s = HUND_AR[h]
   if (r) {
-    if (s) s += ' Ùˆ'
+    if (s) s += ' و'
     if (r < 20) s += UN_AR[r]
-    else { const d = Math.floor(r / 10), u = r % 10; s += (u ? UN_AR[u] + ' Ùˆ' : '') + TENS_AR[d] }
+    else { const d = Math.floor(r / 10), u = r % 10; s += (u ? UN_AR[u] + ' و' : '') + TENS_AR[d] }
   }
   return s
 }
@@ -40,16 +40,25 @@ function montantEnLettresArabes(montant: number): string {
   }
   let n = dinars
   const parts: string[] = []
-  if (n >= 1e9) return 'Ù…Ø¨Ù„Øº ÙƒØ¨ÙŠØ±'
-  if (n >= 1e6) { const q = Math.floor(n / 1e6); n %= 1e6; parts.push(partie(q, 'Ù…Ù„ÙŠÙˆÙ†', 'Ù…Ù„ÙŠÙˆÙ†Ø§Ù†', 'Ù…Ù„Ø§ÙŠÙŠÙ†')) }
-  if (n >= 1e3) { const q = Math.floor(n / 1e3); n %= 1e3; parts.push(partie(q, 'Ø£Ù„Ù', 'Ø£Ù„ÙØ§Ù†', 'Ø¢Ù„Ø§Ù')) }
+  if (n >= 1e9) return 'مبلغ كبير'
+  if (n >= 1e6) { const q = Math.floor(n / 1e6); n %= 1e6; parts.push(partie(q, 'مليون', 'مليونان', 'ملايين')) }
+  if (n >= 1e3) { const q = Math.floor(n / 1e3); n %= 1e3; parts.push(partie(q, 'ألف', 'ألفان', 'آلاف')) }
   if (n > 0) parts.push(moins1000Ar(n))
-  const dinarPart = dinars > 0 ? (dinars === 1 ? 'Ø¯ÙŠÙ†Ø§Ø± ÙˆØ§Ø­Ø¯' : dinars === 2 ? 'Ø¯ÙŠÙ†Ø§Ø±Ø§Ù†' : parts.join(' Ùˆ') + ' ' + (dinars <= 10 ? 'Ø¯Ù†Ø§Ù†ÙŠØ±' : 'Ø¯ÙŠÙ†Ø§Ø±')) : ''
-  const millPart = millimes > 0 ? (millimes === 1 ? 'Ù…Ù„ÙŠÙ… ÙˆØ§Ø­Ø¯' : millimes === 2 ? 'Ù…Ù„ÙŠÙ…Ø§Ù†' : moins1000Ar(millimes) + ' ' + (millimes <= 10 ? 'Ù…Ù„Ø§ÙŠÙ…' : 'Ù…Ù„ÙŠÙ…')) : ''
-  return [dinarPart, millPart].filter(Boolean).join(' Ùˆ')
+  const dinarPart = dinars > 0 ? (dinars === 1 ? 'دينار واحد' : dinars === 2 ? 'ديناران' : parts.join(' و') + ' ' + (dinars <= 10 ? 'دنانير' : 'دينار')) : ''
+  const millPart = millimes > 0 ? (millimes === 1 ? 'مليم واحد' : millimes === 2 ? 'مليمان' : moins1000Ar(millimes) + ' ' + (millimes <= 10 ? 'ملايم' : 'مليم')) : ''
+  return [dinarPart, millPart].filter(Boolean).join(' و')
 }
 
 function imprimerHTML(html: string, w = 176, h = 80) {
+  // Impression via Electron IPC (imprimante système) avec repli web
+  const api = (window as any).electronAPI
+  if (api && typeof api.printHTML === 'function') {
+    api.printHTML({ html, w, h })
+    console.log('[impression] IPC electronAPI envoyé', { w, h })
+    return
+  }
+  console.warn('[impression] electronAPI absent — repli window.open')
+  // Repli (dev / navigateur)
   const win = window.open('', '_blank', 'width=900,height=600')
   if (!win) return
   win.document.write(`<!DOCTYPE html><html><head><title>Impression</title>
@@ -67,19 +76,19 @@ const BANQUES = [
   { code: '05', nom: 'Banque de Tunisie', abbr: 'BT' },
   { code: '07', nom: 'Amen Bank', abbr: 'AB' },
   { code: '08', nom: 'Banque Internationale Arabe de Tunisie', abbr: 'BIAT' },
-  { code: '10', nom: 'SociÃ©tÃ© Tunisienne de Banque', abbr: 'STB' },
+  { code: '10', nom: 'Société Tunisienne de Banque', abbr: 'STB' },
   { code: '11', nom: "Union Bancaire pour le Commerce et l'Industrie", abbr: 'UBCI' },
   { code: '12', nom: 'Union Internationale de Banques', abbr: 'UIB' },
   { code: '14', nom: "Banque de l'Habitat", abbr: 'BH' },
   { code: '16', nom: 'Citibank', abbr: 'CITIBANK' },
   { code: '17', nom: 'Office National des Postes', abbr: 'CCP' },
-  { code: '20', nom: 'Banque Tuniso-KoweÃ¯tienne', abbr: 'BTK' },
+  { code: '20', nom: 'Banque Tuniso-Koweïtienne', abbr: 'BTK' },
   { code: '21', nom: 'Tunisian Saudi Bank', abbr: 'TSB' },
   { code: '23', nom: 'Qatar National Bank', abbr: 'QNB' },
-  { code: '24', nom: 'Banque de Tunisie et des Ã‰mirats', abbr: 'BTE' },
+  { code: '24', nom: 'Banque de Tunisie et des Émirats', abbr: 'BTE' },
   { code: '25', nom: 'Banque Zitouna', abbr: 'BZ' },
   { code: '26', nom: 'Banque Tuniso-Libyenne', abbr: 'BTL' },
-  { code: '27', nom: 'Banque Tunisienne de SolidaritÃ©', abbr: 'BTS' },
+  { code: '27', nom: 'Banque Tunisienne de Solidarité', abbr: 'BTS' },
   { code: '28', nom: 'Bank ABC', abbr: 'ABC' },
   { code: '32', nom: 'Al Baraka Bank Tunisie', abbr: 'ALBARAKA' },
   { code: '33', nom: 'North Africa International Bank', abbr: 'NAIB' },
@@ -122,7 +131,7 @@ function couperLignes(t: string, max = 56): [string, string] {
     if (onL1) l1 = l1 ? l1 + ' ' + m : m
     else l2 = l2 ? l2 + ' ' + m : m
   }
-  return [l1, l2 || 'â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦']
+  return [l1, l2 || '……………………………']
 }
 
 function XS(d: string): string {
@@ -169,7 +178,7 @@ function centsEnFrancais(c: number): string {
 }
 
 function FS(c: number): string {
-  if (c === 0) return 'zÃ©ro'
+  if (c === 0) return 'zéro'
   let u = ''
   if (c >= 1e6) { let d = Math.floor(c / 1e6); u += centsEnFrancais(d) + ' million' + (d > 1 ? 's' : ''); c %= 1e6; if (c) u += ' ' }
   if (c >= 1e3) { let d = Math.floor(c / 1e3); u += (d > 1 ? centsEnFrancais(d) + ' mille' : 'mille'); c %= 1e3; if (c) u += ' ' }
@@ -185,8 +194,10 @@ function montantEnLettresDT(t: number): string {
   return i
 }
 
+// ==== Images de fond : real.png (traite) + chèques par banque ====
 let realPngData: string = ''
-function imgToDataUrl(): Promise<string> {
+const chequeBankData: Record<string, string> = {}
+function imgToDataUrl(regsrc: string): Promise<string> {
   return new Promise<string>((resolve) => {
     try {
       const img = new Image()
@@ -201,7 +212,7 @@ function imgToDataUrl(): Promise<string> {
         } catch { resolve('') }
       }
       img.onerror = () => resolve('')
-      img.src = './real.png'
+      img.src = regsrc
     } catch { resolve('') }
   })
 }
@@ -218,10 +229,33 @@ async function ensureRealPng(): Promise<string> {
     })
     if (realPngData) return realPngData
   } catch { /* fall through */ }
-  realPngData = await imgToDataUrl()
+  realPngData = await imgToDataUrl('./real.png')
   return realPngData
 }
 function getRealPng(): string { return realPngData }
+// Charge le fond de chèque d'une banque : cheques/<abbr-lower>.png (ex. bz.png, uib.png)
+// Retourne '' si l'image n'existe pas (→ gabarit dessiné en code).
+async function ensureChequeBank(abbr: string): Promise<string> {
+  if (!abbr) return ''
+  const key = (abbr || '').toLowerCase()
+  if (chequeBankData[key]) return chequeBankData[key]
+  if (chequeBankData[key] === null) return ''
+  const src = './cheques/' + key + '.png'
+  try {
+    const res = await fetch(src)
+    if (!res.ok) { chequeBankData[key] = ''; return '' }
+    const blob = await res.blob()
+    const d = await new Promise<string>((resolve) => {
+      const fr = new FileReader()
+      fr.onload = () => resolve(String(fr.result))
+      fr.onerror = () => resolve('')
+      fr.readAsDataURL(blob)
+    })
+    chequeBankData[key] = d || ''
+    return chequeBankData[key]
+  } catch { chequeBankData[key] = ''; return '' }
+}
+function getChequeBank(abbr: string): string { return abbr ? (chequeBankData[(abbr || '').toLowerCase()] || '') : '' }
 void ensureRealPng()
 
 interface CompteForm {
@@ -356,7 +390,7 @@ function PageAccueil({ comptes, onSelect, onNew, onDelete }: {
         <div className="bg-gradient-to-r from-blue-900 to-blue-700 text-white p-6 text-center">
           <FaBuilding className="text-4xl mx-auto mb-3 opacity-80" />
           <h1 className="text-2xl font-bold">ImprimCheques</h1>
-          <p className="text-blue-200 text-sm mt-1">SÃ©lectionnez un compte ou crÃ©ez-en un nouveau</p>
+          <p className="text-blue-200 text-sm mt-1">Sélectionnez un compte ou créez-en un nouveau</p>
         </div>
 
         <div className="p-6">
@@ -368,7 +402,7 @@ function PageAccueil({ comptes, onSelect, onNew, onDelete }: {
           {comptes.length === 0 ? (
             <div className="text-center py-8 text-gray-400">
               <FaFolderOpen className="text-4xl mx-auto mb-3 opacity-30" />
-              <p>Aucun compte enregistrÃ©</p>
+              <p>Aucun compte enregistré</p>
             </div>
           ) : (
             <div className="space-y-2 max-h-[400px] overflow-y-auto">
@@ -384,7 +418,7 @@ function PageAccueil({ comptes, onSelect, onNew, onDelete }: {
                         <span className="font-bold text-sm text-gray-800">{c.titulaire}</span>
                         <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-semibold">{b?.abbr}</span>
                       </div>
-                      <div className="text-xs text-gray-500 font-mono">NÂ° {c.numeroCompte} | Agence {c.agence}</div>
+                      <div className="text-xs text-gray-500 font-mono">N° {c.numeroCompte} | Agence {c.agence}</div>
                       <div className="text-xs text-gray-400">{c.adresse} - {c.ville}</div>
                     </div>
                     <button onClick={(e) => { e.stopPropagation(); if (confirm('Supprimer ce compte ?')) onDelete(c.id) }}
@@ -432,17 +466,17 @@ function PageCreationCompte({ onCreated, onBack }: { onCreated: (c: CompteForm) 
         </div>
         <div className="p-6 space-y-4">
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Nom du titulaire du chÃ©quier *</label>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Nom du titulaire du chéquier *</label>
             <input type="text" name="titulaire" value={form.titulaire} onChange={handle} dir={detectDirection(form.titulaire)}
               className="w-full border-2 border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none transition"
-              placeholder="Nom et prÃ©nom du titulaire" />
+              placeholder="Nom et prénom du titulaire" />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">NÂ° Compte (RIB) - 20 chiffres *</label>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">N° Compte (RIB) - 20 chiffres *</label>
             <input type="text" name="numeroCompte" value={form.numeroCompte} onChange={handle}
               className="w-full border-2 border-gray-200 rounded-lg px-4 py-2.5 text-sm font-mono focus:border-blue-500 focus:outline-none transition"
               placeholder="01000123456789012345" maxLength={20} />
-            <p className="text-[9px] text-gray-400 mt-1">Code banque (2) + Agence (3) + Compte (13) + ClÃ© (2) = 20 chiffres</p>
+            <p className="text-[9px] text-gray-400 mt-1">Code banque (2) + Agence (3) + Compte (13) + Clé (2) = 20 chiffres</p>
           </div>
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1">IBAN</label>
@@ -458,7 +492,7 @@ function PageCreationCompte({ onCreated, onBack }: { onCreated: (c: CompteForm) 
             </select>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">NÂ° Agence (B.P.D)</label>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">N° Agence (B.P.D)</label>
             <input type="text" name="agence" value={form.agence} onChange={handle}
               className="w-full border-2 border-gray-200 rounded-lg px-4 py-2.5 text-sm font-mono focus:border-blue-500 focus:outline-none transition"
               placeholder="001" maxLength={3} />
@@ -478,7 +512,7 @@ function PageCreationCompte({ onCreated, onBack }: { onCreated: (c: CompteForm) 
             </div>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">TÃ©lÃ©phone</label>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Téléphone</label>
             <input type="text" name="telephone" value={form.telephone} onChange={handle}
               className="w-full border-2 border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none transition"
               placeholder="71 000 000" />
@@ -491,7 +525,7 @@ function PageCreationCompte({ onCreated, onBack }: { onCreated: (c: CompteForm) 
             <button onClick={handleSubmit}
               disabled={!form.titulaire || !form.numeroCompte}
               className="flex-1 bg-green-600 text-white py-3 rounded-lg font-bold text-sm hover:bg-green-700 transition disabled:opacity-40 disabled:cursor-not-allowed">
-              CrÃ©er & Ouvrir
+              Créer & Ouvrir
             </button>
           </div>
         </div>
@@ -550,6 +584,8 @@ function AppPrincipal({ compte, onBack }: { compte: CompteForm; onBack: () => vo
   }, [])
 
   const banqueChoisie = useMemo(() => BANQUES.find(b => b.code === compte.banqueCode), [compte.banqueCode])
+  const [, forceRerender] = useState(0)
+  useEffect(() => { ensureChequeBank(banqueChoisie?.abbr || '').then(() => forceRerender(n => n + 1)) }, [banqueChoisie?.abbr])
   const rtlCheque = cheque.langue === 'ar'
   const mlCheque = useMemo(() => montantEnLettres(parseFloat(cheque.montantChiffres) || 0), [cheque.montantChiffres])
   const mlChequeFinal = useMemo(() => (rtlCheque ? montantEnLettresArabes(parseFloat(cheque.montantChiffres) || 0) : mlCheque), [rtlCheque, mlCheque, cheque.montantChiffres])
@@ -602,8 +638,8 @@ function AppPrincipal({ compte, onBack }: { compte: CompteForm; onBack: () => vo
   const clearHist = useCallback(() => { setHistorique([]); localStorage.removeItem('imprimcheques-hist') }, [])
 
   const exportCSV = useCallback(() => {
-    const h = ['Type', 'Date', 'BÃ©nÃ©ficiaire', 'Montant (DT)', 'Banque', 'NÂ° ChÃ¨que']
-    const rows = historique.map(x => [x.type === 'cheque' ? 'ChÃ¨que' : 'Traite', x.date, x.beneficiaire, x.montant, x.banque || '-', x.numeroCheque || '-'])
+    const h = ['Type', 'Date', 'Bénéficiaire', 'Montant (DT)', 'Banque', 'N° Chèque']
+    const rows = historique.map(x => [x.type === 'cheque' ? 'Chèque' : 'Traite', x.date, x.beneficiaire, x.montant, x.banque || '-', x.numeroCheque || '-'])
     const csv = [h, ...rows].map(r => r.map(c => `"${c}"`).join(';')).join('\n')
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
@@ -631,11 +667,11 @@ function AppPrincipal({ compte, onBack }: { compte: CompteForm; onBack: () => vo
             <div className="bg-white/10 p-2 rounded-lg"><FaExchangeAlt className="text-xl" /></div>
             <div>
               <h1 className="text-2xl font-bold">ImprimCheques</h1>
-              <p className="text-blue-200 text-xs">{compte.titulaire} | {banqueChoisie?.abbr} | NÂ° {compte.numeroCompte}</p>
+              <p className="text-blue-200 text-xs">{compte.titulaire} | {banqueChoisie?.abbr} | N° {compte.numeroCompte}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => setPage('cheque')} className={`px-3 py-2 rounded text-sm font-semibold flex items-center gap-1.5 transition ${page === 'cheque' ? 'bg-white text-blue-900' : 'bg-white/10 hover:bg-white/20'}`}><FaCheck /> ChÃ¨que</button>
+            <button onClick={() => setPage('cheque')} className={`px-3 py-2 rounded text-sm font-semibold flex items-center gap-1.5 transition ${page === 'cheque' ? 'bg-white text-blue-900' : 'bg-white/10 hover:bg-white/20'}`}><FaCheck /> Chèque</button>
             <button onClick={() => setPage('traite')} className={`px-3 py-2 rounded text-sm font-semibold flex items-center gap-1.5 transition ${page === 'traite' ? 'bg-white text-amber-900' : 'bg-white/10 hover:bg-white/20'}`}><FaFileInvoice /> Traite</button>
             <button onClick={() => setPage('historique')} className={`px-3 py-2 rounded text-sm font-semibold flex items-center gap-1.5 transition ${page === 'historique' ? 'bg-white text-green-900' : 'bg-white/10 hover:bg-white/20'}`}><FaHistory /> Historique ({historique.length})</button>
             <button onClick={onBack} className="px-3 py-2 rounded text-sm font-semibold bg-white/10 hover:bg-red-500/80 transition flex items-center gap-1.5"><FaCog /> Comptes</button>
@@ -648,36 +684,36 @@ function AppPrincipal({ compte, onBack }: { compte: CompteForm; onBack: () => vo
           <div className="flex gap-6 flex-col lg:flex-row">
             <div className="lg:w-[420px] space-y-4">
               <div className="bg-white rounded-lg shadow p-5 space-y-3">
-                <h2 className="text-base font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><FaCheck className="text-blue-600" /> Nouveau ChÃ¨que</h2>
+                <h2 className="text-base font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><FaCheck className="text-blue-600" /> Nouveau Chèque</h2>
 
                 <div className="bg-blue-50 border border-blue-200 rounded p-3 space-y-1">
                   <p className="text-[10px] font-bold text-blue-700 uppercase">Mon Compte</p>
                   <div className="grid grid-cols-2 gap-1 text-xs">
                     <div><span className="text-gray-500">Titulaire : </span><span className="font-bold">{compte.titulaire}</span></div>
                     <div><span className="text-gray-500">Banque : </span><span className="font-bold">{banqueChoisie?.abbr}</span></div>
-                    <div><span className="text-gray-500">NÂ° Compte : </span><span className="font-mono font-bold">{compte.numeroCompte}</span></div>
+                    <div><span className="text-gray-500">N° Compte : </span><span className="font-mono font-bold">{compte.numeroCompte}</span></div>
                     <div><span className="text-gray-500">Agence : </span><span className="font-mono font-bold">{compte.agence}</span></div>
                     <div className="col-span-2"><span className="text-gray-500">IBAN : </span><span className="font-mono font-bold text-[11px]">{compte.iban || '-'}</span></div>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">Ville (lieu d'Ã©mission)</label><input type="text" name="lieuEmission" value={cheque.lieuEmission} onChange={handleCheque} dir={detectDirection(cheque.lieuEmission)} className="w-full border rounded px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Sousse" /></div>
-                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">Date Ã©mission</label><input type="date" name="date" value={cheque.date} onChange={handleCheque} className="w-full border rounded px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" /></div>
+                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">Ville (lieu d'émission)</label><input type="text" name="lieuEmission" value={cheque.lieuEmission} onChange={handleCheque} dir={detectDirection(cheque.lieuEmission)} className="w-full border rounded px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Sousse" /></div>
+                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">Date émission</label><input type="date" name="date" value={cheque.date} onChange={handleCheque} className="w-full border rounded px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" /></div>
                 </div>
-                <div><label className="block text-xs font-semibold text-gray-600 mb-1">NÂ° ChÃ¨que (pour historique)</label><input type="text" name="numeroCheque" value={cheque.numeroCheque} onChange={handleCheque} className="w-full border rounded px-3 py-1.5 text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="00123456" /></div>
+                <div><label className="block text-xs font-semibold text-gray-600 mb-1">N° Chèque (pour historique)</label><input type="text" name="numeroCheque" value={cheque.numeroCheque} onChange={handleCheque} className="w-full border rounded px-3 py-1.5 text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="00123456" /></div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Langue du chÃ¨que</label>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Langue du chèque</label>
                   <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
-                    <button onClick={() => setCheque(prev => ({ ...prev, langue: 'fr' }))} className={`flex-1 py-1.5 rounded-md text-sm font-semibold transition ${cheque.langue === 'fr' ? 'bg-blue-600 text-white shadow' : 'text-gray-600 hover:bg-gray-200'}`}>FranÃ§ais</button>
-                    <button onClick={() => setCheque(prev => ({ ...prev, langue: 'ar' }))} className={`flex-1 py-1.5 rounded-md text-sm font-semibold transition ${cheque.langue === 'ar' ? 'bg-blue-600 text-white shadow' : 'text-gray-600 hover:bg-gray-200'}`} dir="rtl">Ø§Ù„Ø¹Ø±Ø¨ÙŠØ©</button>
+                    <button onClick={() => setCheque(prev => ({ ...prev, langue: 'fr' }))} className={`flex-1 py-1.5 rounded-md text-sm font-semibold transition ${cheque.langue === 'fr' ? 'bg-blue-600 text-white shadow' : 'text-gray-600 hover:bg-gray-200'}`}>Français</button>
+                    <button onClick={() => setCheque(prev => ({ ...prev, langue: 'ar' }))} className={`flex-1 py-1.5 rounded-md text-sm font-semibold transition ${cheque.langue === 'ar' ? 'bg-blue-600 text-white shadow' : 'text-gray-600 hover:bg-gray-200'}`} dir="rtl">العربية</button>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <input type="checkbox" name="bare" checked={cheque.bare} onChange={(e) => setCheque(prev => ({ ...prev, bare: e.target.checked }))} className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500" />
-                  <label className="text-xs font-semibold text-gray-600">ChÃ¨que barrÃ© (non endossable)</label>
+                  <label className="text-xs font-semibold text-gray-600">Chèque barré (non endossable)</label>
                 </div>
-                <div><label className="block text-xs font-semibold text-gray-600 mb-1">BÃ©nÃ©ficiaire (A l'ordre de)</label><input type="text" name="beneficiaire" value={cheque.beneficiaire} onChange={handleCheque} dir={detectDirection(cheque.beneficiaire)} className="w-full border rounded px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Nom du bÃ©nÃ©ficiaire" /></div>
+                <div><label className="block text-xs font-semibold text-gray-600 mb-1">Bénéficiaire (A l'ordre de)</label><input type="text" name="beneficiaire" value={cheque.beneficiaire} onChange={handleCheque} dir={detectDirection(cheque.beneficiaire)} className="w-full border rounded px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Nom du bénéficiaire" /></div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Montant (DT) - Plafond 30 000 DT</label>
                   <input type="number" step="0.001" min="0" max="30000" name="montantChiffres" value={cheque.montantChiffres} onChange={handleCheque} className="w-full border rounded px-3 py-1.5 text-sm font-mono text-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="0.000" />
@@ -688,12 +724,12 @@ function AppPrincipal({ compte, onBack }: { compte: CompteForm; onBack: () => vo
                 </div>
               </div>
               <div className="flex gap-2">
-                <button onClick={() => setShowApercu(true)} className="flex-1 flex items-center justify-center gap-2 bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition shadow"><FaEye /> AperÃ§u</button>
+                <button onClick={() => setShowApercu(true)} className="flex-1 flex items-center justify-center gap-2 bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition shadow"><FaEye /> Aperçu</button>
                 <button onClick={saveCheque} className="flex-1 flex items-center justify-center gap-2 bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700 transition shadow"><FaPrint /> Enregistrer & Imprimer</button>
               </div>
             </div>
             <div className="flex-1 min-w-0">
-              <h2 className="text-lg font-bold text-gray-800 mb-3">AperÃ§u</h2>
+              <h2 className="text-lg font-bold text-gray-800 mb-3">Aperçu</h2>
               <ApercuCheque cheque={cheque} compte={compte} banque={banqueChoisie} ml={mlChequeFinal} rtl={rtlCheque} />
             </div>
           </div>
@@ -768,7 +804,7 @@ function AppPrincipal({ compte, onBack }: { compte: CompteForm; onBack: () => vo
                       <div key={c.id} className="flex items-center justify-between text-xs border-b pb-1">
                         <div>
                           <div className="font-semibold">{c.nom}</div>
-                          <div className="text-gray-400">{c.banque} · {c.rib || 'sans RIB'}</div>
+                          <div className="text-gray-400">{c.banque} – {c.rib || 'sans RIB'}</div>
                         </div>
                         <button onClick={() => { const list = contacts.filter(x => x.id !== c.id); setContacts(list); saveContacts(list) }} className="text-red-500 hover:text-red-700 text-xs font-semibold">Suppr.</button>
                       </div>
@@ -807,7 +843,7 @@ function AppPrincipal({ compte, onBack }: { compte: CompteForm; onBack: () => vo
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowApercu(false)}>
           <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold">AperÃ§u avant impression</h3>
+              <h3 className="text-lg font-bold">Aperçu avant impression</h3>
               <div className="flex gap-2">
                 <button onClick={() => page === 'traite' ? printTraite() : printCheque()} className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-700"><FaPrint /> Imprimer</button>
                 <button onClick={() => setShowApercu(false)} className="bg-gray-200 px-4 py-2 rounded-lg font-semibold hover:bg-gray-300">Fermer</button>
@@ -822,19 +858,20 @@ function AppPrincipal({ compte, onBack }: { compte: CompteForm; onBack: () => vo
 }
 
 function ApercuCheque({ cheque, compte, banque, ml, rtl }: { cheque: ChequeForm; compte: CompteForm; banque: typeof BANQUES[0] | undefined; ml: string; rtl: boolean }) {
-  const prefMontant = rtl ? 'Ø§Ø¯ÙØ¹ÙˆØ§ Ø¨Ù…Ù‚ØªØ¶Ù‰ Ù‡Ø°Ø§ Ø§Ù„Ø´ÙŠÙƒ ØºÙŠØ± Ø§Ù„Ù‚Ø§Ø¨Ù„ Ù„Ù„ØªØ¸Ù‡ÙŠØ± :' : 'Payez contre ce chÃ¨que non endossable :'
-  const libOrdre = rtl ? 'Ù„Ø£Ù…Ø± :' : "A l'ordre de :"
-  const libVille = rtl ? 'Ø§Ù„Ø¨Ù„Ø¯Ø© :' : 'Ville :'
-  const libDate = rtl ? 'Ø§Ù„ØªØ§Ø±ÙŠØ® :' : 'Date :'
+  const prefMontant = rtl ? 'ادفعوا بمقتضى هذا الشيك غير القابل للتظهير :' : 'Payez contre ce chèque non endossable :'
+  const libOrdre = rtl ? 'لأمر :' : "A l'ordre de :"
+  const libVille = rtl ? 'البلدة :' : 'Ville :'
+  const libDate = rtl ? 'التاريخ :' : 'Date :'
   const espace = rtl ? { right: '10mm', left: '8mm', direction: 'rtl' as const } : { left: '8mm', right: '8mm' }
-  const mlText = ml ? ml : 'â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦'
+  const mlText = ml ? ml : '……………………………'
   const m = cheque.montantChiffres ? parseFloat(cheque.montantChiffres).toFixed(3) : '__.___'
   const [ligne1, ligne2] = couperLignes(mlText)
+  const bg = banque ? getChequeBank(banque.abbr) : ''
 
   return (
-    <div style={{ width: '176mm', height: '80mm', fontFamily: 'Arial, sans-serif', border: '1px solid #999', overflow: 'hidden', position: 'relative', background: 'white', fontSize: '9px' }}>
+    <div style={bg ? { width: '176mm', height: '80mm', fontFamily: 'Arial, sans-serif', border: '1px solid #999', overflow: 'hidden', position: 'relative', backgroundImage: `url(${bg})`, backgroundSize: 'cover', backgroundPosition: 'center', fontSize: '9px' } : { width: '176mm', height: '80mm', fontFamily: 'Arial, sans-serif', border: '1px solid #999', overflow: 'hidden', position: 'relative', background: 'white', fontSize: '9px' }}>
 
-      {/* 2 barres parallÃ¨les (chÃ¨que barrÃ©) - coin haut gauche */}
+      {/* 2 barres parallèles (chèque barré) - coin haut gauche */}
       {cheque.bare && (
         <div style={{ position: 'absolute', top: '2mm', left: '3mm', width: '8mm', height: '6mm' }}>
           <div style={{ position: 'absolute', top: '1mm', left: 0, width: '100%', height: 0, borderTop: '0.5mm solid #333', transform: 'rotate(-20deg)', transformOrigin: 'left center' }}></div>
@@ -842,25 +879,25 @@ function ApercuCheque({ cheque, compte, banque, ml, rtl }: { cheque: ChequeForm;
         </div>
       )}
 
-      {/* ===== EN-TÃŠTE BANQUE (haut gauche, X 5-75 / Y 5-15) ===== */}
+      {/* ===== EN-TÊTE BANQUE (haut gauche, X 5-75 / Y 5-15) ===== */}
       <div style={{ position: 'absolute', top: '5mm', left: '8mm', right: '78mm', fontSize: '4mm', color: '#16336b', fontWeight: 'bold', lineHeight: 1.2 }}>
         {banque?.nom || 'Banque Zitouna'}
       </div>
 
-      {/* ===== NÂ° CHÃˆQUE (Ã  cÃ´tÃ© de la case montant) ===== */}
+      {/* ===== N° CHÈQUE (à côté de la case montant) ===== */}
       <div style={{ position: 'absolute', top: '6mm', left: '90mm', width: '31mm', textAlign: 'right' }}>
-        <div style={{ fontSize: '2mm', color: '#777' }}>NÂ° chÃ¨que :</div>
-        <div style={{ fontSize: '3mm', fontFamily: 'monospace', fontWeight: 'bold', color: '#222' }}>{cheque.numeroCheque || 'â€¦â€¦â€¦â€¦'}</div>
+        <div style={{ fontSize: '2mm', color: '#777' }}>N° chèque :</div>
+        <div style={{ fontSize: '3mm', fontFamily: 'monospace', fontWeight: 'bold', color: '#222' }}>{cheque.numeroCheque || '…………'}</div>
       </div>
 
-      {/* ===== MONTANT EN CHIFFRES (sans cadre, tout en haut Ã  droite) ===== */}
+      {/* ===== MONTANT EN CHIFFRES (sans cadre, tout en haut à droite) ===== */}
       <div style={{ position: 'absolute', top: '0mm', right: '4mm', textAlign: 'right' }}>
         <div style={{ fontSize: '1.8mm', color: '#777' }}>B.P.D</div>
         <div style={{ fontSize: '4.5mm', fontFamily: 'monospace', fontWeight: 'bold', color: '#c00' }}>{m} DT</div>
       </div>
 
-      {/* ===== MONTANT EN LETTRES (Payez contre + texte + points mÃªme ligne) ===== */}
-      {/* Ligne 1 (25mm) : texte au dÃ©but, points aprÃ¨s, direction auto G->D / D->G */}
+      {/* ===== MONTANT EN LETTRES (Payez contre + texte + points même ligne) ===== */}
+      {/* Ligne 1 (25mm) : texte au début, points après, direction auto G->D / D->G */}
       <div style={{ position: 'absolute', top: '25mm', display: 'flex', alignItems: 'flex-start', ...espace }}>
         <span style={{ fontSize: '2.5mm', color: '#555', fontStyle: rtl ? 'normal' : 'italic', marginRight: '2mm', whiteSpace: 'nowrap', flexShrink: 0 }}>{prefMontant}</span>
         <span style={{ fontSize: '3.5mm', fontWeight: 'bold', color: '#222', whiteSpace: 'normal', wordBreak: 'break-word', flex: '0 1 auto', minWidth: 0 }}>{ligne1}</span>
@@ -872,20 +909,20 @@ function ApercuCheque({ cheque, compte, banque, ml, rtl }: { cheque: ChequeForm;
         <span style={{ flex: 1, borderBottom: '0.4mm dotted #999', height: '4mm', marginLeft: '2mm', minWidth: '5mm' }}></span>
       </div>
 
-      {/* ===== A L'ORDRE DE (35mm, reculÃ©, points jusqu'au bout) ===== */}
+      {/* ===== A L'ORDRE DE (35mm, reculé, points jusqu'au bout) ===== */}
       <div style={{ position: 'absolute', top: '35mm', display: 'flex', alignItems: 'flex-start', ...espace }}>
         <span style={{ fontSize: '2.5mm', fontWeight: 'bold', color: '#333', marginRight: '2mm', flexShrink: 0 }}>{libOrdre}</span>
-        <span dir={detectDirection(cheque.beneficiaire)} style={{ fontSize: '3.5mm', fontWeight: 'bold', color: '#222', whiteSpace: 'normal', wordBreak: 'break-word', flex: '0 1 auto', minWidth: 0 }}>{cheque.beneficiaire || 'â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦'}</span>
+        <span dir={detectDirection(cheque.beneficiaire)} style={{ fontSize: '3.5mm', fontWeight: 'bold', color: '#222', whiteSpace: 'normal', wordBreak: 'break-word', flex: '0 1 auto', minWidth: 0 }}>{cheque.beneficiaire || '………………………………'}</span>
         <span style={{ flex: 1, borderBottom: '0.4mm dotted #999', height: '3.5mm', marginLeft: '2mm', minWidth: '5mm' }}></span>
       </div>
 
-      {/* ===== SIGNATURE (droite, Ã  46mm, mÃªme position dans les 2 langues) ===== */}
+      {/* ===== SIGNATURE (droite, à 46mm, même position dans les 2 langues) ===== */}
       <div style={{ position: 'absolute', top: '46mm', left: '122mm', width: '44mm', textAlign: 'center', fontSize: '2mm', color: '#777' }}>
         <div>Signature(s)</div>
         <div style={{ borderBottom: '0.4mm dotted #999', width: '80%', margin: '1.5mm auto 0' }}></div>
       </div>
 
-      {/* ===== LIGNE BAS (AGENCE gauche / NÂ° compte au milieu, Ã  43mm) ===== */}
+      {/* ===== LIGNE BAS (AGENCE gauche / N° compte au milieu, à 43mm) ===== */}
       <div style={{ position: 'absolute', top: '43mm', left: '8mm', right: '8mm', display: 'flex', alignItems: 'center', ...(rtl ? { direction: 'rtl' } : {}) }}>
         {/* A.G.E.N.C.E (gauche) */}
         <div style={{ flex: 1, fontSize: '2mm', color: '#777' }}>
@@ -893,31 +930,31 @@ function ApercuCheque({ cheque, compte, banque, ml, rtl }: { cheque: ChequeForm;
           <div style={{ fontWeight: 'bold', fontSize: '3mm', color: '#333' }}>{compte.agence || '___'}</div>
         </div>
 
-        {/* NÂ° compte (au milieu exactement) */}
+        {/* N° compte (au milieu exactement) */}
         <div style={{ flex: 1, textAlign: 'center', fontSize: '2mm', color: '#777' }}>
-          <div>NÂ° de compte</div>
-          <div style={{ fontWeight: 'bold', fontFamily: 'monospace', fontSize: '3mm', color: '#333', letterSpacing: '0.5mm', marginTop: '0.5mm' }}>{compte.numeroCompte || 'â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦'}</div>
+          <div>N° de compte</div>
+          <div style={{ fontWeight: 'bold', fontFamily: 'monospace', fontSize: '3mm', color: '#333', letterSpacing: '0.5mm', marginTop: '0.5mm' }}>{compte.numeroCompte || '………………………………'}</div>
         </div>
 
-        {/* Espaceur symÃ©trique pour garder NÂ° compte centrÃ© */}
+        {/* Espaceur symétrique pour garder N° compte centré */}
         <div style={{ flex: 1 }}></div>
       </div>
 
-      {/* ===== VILLE + DATE (Ã  56mm, toujours au milieu) ===== */}
+      {/* ===== VILLE + DATE (à 56mm, toujours au milieu) ===== */}
       <div style={{ position: 'absolute', top: '56mm', left: '50%', transform: 'translateX(-50%)', display: 'flex', alignItems: 'baseline', gap: '1mm', whiteSpace: 'nowrap', ...(rtl ? { direction: 'rtl' } : {}) }}>
         <div style={{ display: 'flex', alignItems: 'baseline' }}>
           <span style={{ fontSize: '2.5mm', color: '#555', marginRight: '1mm' }}>{libVille}</span>
-          <span dir={detectDirection(cheque.lieuEmission)} style={{ fontSize: '3mm', fontWeight: 'bold', color: '#222', borderBottom: '0.4mm dotted #999', padding: '0 2mm' }}>{cheque.lieuEmission || 'â€¦â€¦â€¦â€¦â€¦'}</span>
+          <span dir={detectDirection(cheque.lieuEmission)} style={{ fontSize: '3mm', fontWeight: 'bold', color: '#222', borderBottom: '0.4mm dotted #999', padding: '0 2mm' }}>{cheque.lieuEmission || '……………'}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'baseline' }}>
           <span style={{ fontSize: '2.5mm', color: '#555', marginRight: '1mm' }}>{libDate}</span>
-          <span dir="ltr" style={{ fontSize: '3mm', fontWeight: 'bold', color: '#222', borderBottom: '0.4mm dotted #999', padding: '0 2mm' }}>{cheque.date || 'â€¦/â€¦/â€¦â€¦'}</span>
+          <span dir="ltr" style={{ fontSize: '3mm', fontWeight: 'bold', color: '#222', borderBottom: '0.4mm dotted #999', padding: '0 2mm' }}>{cheque.date || '…/…/……'}</span>
         </div>
       </div>
 
       {/* ===== MICR (en bas, ne couvre pas la date) ===== */}
       <div style={{ position: 'absolute', bottom: 0, left: 0, right: '42mm', background: '#f5f5f5', borderTop: '1px solid #ddd', padding: '1.5mm 12mm', textAlign: 'center', fontFamily: 'monospace', fontSize: '2.5mm', color: '#555', letterSpacing: '1.5mm' }}>
-        â‘†{compte.numeroCompte || 'â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦'} â‘†{compte.agence || 'â€¦â€¦'} â‘†â€¢â€¢â€¢
+        ⑆{compte.numeroCompte || '………………………………'} ⑆{compte.agence || '……'} ⑆•••
       </div>
     </div>
   )
@@ -1000,7 +1037,7 @@ function GenererLot({ total, tire, onGenerate }: { total: string; tire: string; 
         <label className="block text-[10px] font-semibold text-gray-500 mb-0.5">Première échéance</label>
         <input type="date" value={start} onChange={e => setStart(e.target.value)} className="w-full border rounded px-2 py-1 text-xs" />
       </div>
-      <p className="text-[10px] text-gray-500">Montant total : <b>{total || '—'}</b> réparti en {Math.max(1, Math.floor(n))} traite(s).</p>
+      <p className="text-[10px] text-gray-500">Montant total : <b>{total || '0'}</b> réparti en {Math.max(1, Math.floor(n))} traite(s).</p>
       <button onClick={generer} className="w-full bg-amber-600 text-white text-xs font-bold py-1.5 rounded hover:bg-amber-700">Générer le lot</button>
     </div>
   )
@@ -1063,20 +1100,20 @@ function PageHistorique({ historique, onDel, onClear, onExport }: { historique: 
         </div>
       </div>
       {!historique.length ? (
-        <div className="text-center py-12 text-gray-400"><FaHistory className="text-4xl mx-auto mb-3 opacity-30" /><p>Aucun Ã©lÃ©ment enregistrÃ©.</p></div>
+        <div className="text-center py-12 text-gray-400"><FaHistory className="text-4xl mx-auto mb-3 opacity-30" /><p>Aucun élément enregistré.</p></div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead><tr className="bg-gray-100 text-gray-600 text-xs uppercase"><th className="px-3 py-2 text-left">Type</th><th className="px-3 py-2 text-left">Date</th><th className="px-3 py-2 text-left">BÃ©nÃ©ficiaire</th><th className="px-3 py-2 text-right">Montant (DT)</th><th className="px-3 py-2 text-left">Banque</th><th className="px-3 py-2 text-left">NÂ° ChÃ¨que</th><th className="px-3 py-2 text-center">BarrÃ©</th><th className="px-3 py-2 text-center">Actions</th></tr></thead>
+            <thead><tr className="bg-gray-100 text-gray-600 text-xs uppercase"><th className="px-3 py-2 text-left">Type</th><th className="px-3 py-2 text-left">Date</th><th className="px-3 py-2 text-left">Bénéficiaire</th><th className="px-3 py-2 text-right">Montant (DT)</th><th className="px-3 py-2 text-left">Banque</th><th className="px-3 py-2 text-left">N° Chèque</th><th className="px-3 py-2 text-center">Barré</th><th className="px-3 py-2 text-center">Actions</th></tr></thead>
             <tbody>{historique.map(h => (
               <tr key={h.id} className="border-b hover:bg-gray-50">
-                <td className="px-3 py-2"><span className={`px-2 py-0.5 rounded text-xs font-semibold ${h.type === 'cheque' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>{h.type === 'cheque' ? 'ChÃ¨que' : 'Traite'}</span></td>
+                <td className="px-3 py-2"><span className={`px-2 py-0.5 rounded text-xs font-semibold ${h.type === 'cheque' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>{h.type === 'cheque' ? 'Chèque' : 'Traite'}</span></td>
                 <td className="px-3 py-2 text-gray-700">{h.date}</td>
                 <td className="px-3 py-2 font-semibold">{h.beneficiaire}</td>
                 <td className="px-3 py-2 text-right font-mono font-bold text-gray-900">{parseFloat(h.montant).toFixed(3)}</td>
                 <td className="px-3 py-2 text-gray-600 text-xs">{h.banque || '-'}</td>
                 <td className="px-3 py-2 font-mono text-xs">{h.numeroCheque || '-'}</td>
-                <td className="px-3 py-2 text-center">{h.type === 'cheque' ? <span className="text-green-600 font-bold">âœ“</span> : <span className="text-gray-400">-</span>}</td>
+                <td className="px-3 py-2 text-center">{h.type === 'cheque' ? <span className="text-green-600 font-bold">✓</span> : <span className="text-gray-400">-</span>}</td>
                 <td className="px-3 py-2 text-center"><button onClick={() => onDel(h.id)} className="text-red-500 hover:text-red-700 text-xs font-semibold">Supprimer</button></td>
               </tr>
             ))}</tbody>
@@ -1089,24 +1126,28 @@ function PageHistorique({ historique, onDel, onClear, onExport }: { historique: 
 }
 
 function getChequePrintHTML(cheque: ChequeForm, _compte: CompteForm, _banque: typeof BANQUES[0] | undefined, ml: string, rtl = false): string {
-  const mlText = ml ? ml : 'â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦'
+  const mlText = ml ? ml : '……………………………'
   const m = cheque.montantChiffres ? parseFloat(cheque.montantChiffres).toFixed(3) : '__.___'
   const [ligne1, ligne2] = couperLignes(mlText)
-  const prefMontant = rtl ? 'Ø§Ø¯ÙØ¹ÙˆØ§ Ø¨Ù…Ù‚ØªØ¶Ù‰ Ù‡Ø°Ø§ Ø§Ù„Ø´ÙŠÙƒ ØºÙŠØ± Ø§Ù„Ù‚Ø§Ø¨Ù„ Ù„Ù„ØªØ¸Ù‡ÙŠØ± :' : 'Payez contre ce chÃ¨que non endossable :'
-  const libOrdre = rtl ? 'Ù„Ø£Ù…Ø± :' : "A l'ordre de :"
-  const libVille = rtl ? 'Ø§Ù„Ø¨Ù„Ø¯Ø© :' : 'Ville :'
-  const libDate = rtl ? 'Ø§Ù„ØªØ§Ø±ÙŠØ® :' : 'Date :'
+  const prefMontant = rtl ? 'ادفعوا بمقتضى هذا الشيك غير القابل للتظهير :' : 'Payez contre ce chèque non endossable :'
+  const libOrdre = rtl ? 'لأمر :' : "A l'ordre de :"
+  const libVille = rtl ? 'البلدة :' : 'Ville :'
+  const libDate = rtl ? 'التاريخ :' : 'Date :'
   const espace = rtl ? 'right:10mm;left:8mm;direction:rtl;' : 'left:8mm;right:8mm;'
   const villeStyle = rtl ? 'top:56mm;left:50%;transform:translateX(-50%);display:flex;align-items:baseline;gap:1mm;white-space:nowrap;direction:rtl;' : 'top:56mm;left:50%;transform:translateX(-50%);display:flex;align-items:baseline;gap:1mm;white-space:nowrap;'
   const dateStyle = ''
   const milliStyle = rtl ? 'font-style:normal;' : 'font-style:italic;'
+  const bg = _banque ? getChequeBank(_banque.abbr) : ''
+  const contStyle = bg
+    ? 'width:176mm;height:80mm;font-family:Arial,sans-serif;overflow:hidden;position:relative;background-image:url(' + bg + ');background-size:cover;background-position:center;margin:0;font-size:9px;'
+    : 'width:176mm;height:80mm;font-family:Arial,sans-serif;overflow:hidden;position:relative;background:transparent;margin:0;font-size:9px;'
 
-  return `<div class="cheque" style="font-family:Arial,sans-serif;overflow:hidden;position:relative;background:transparent;margin:0;font-size:9px;">
+  return `<div class="cheque" style="${contStyle}">
     <div style="position:absolute;top:6mm;right:4mm;text-align:right;"><div style="font-size:4.5mm;font-family:monospace;font-weight:bold;color:#c00;">${m} DT</div></div>
     <div style="position:absolute;top:25mm;${espace}display:flex;align-items:flex-start;"><span style="font-size:2.5mm;color:#555;${milliStyle}margin-right:2mm;white-space:nowrap;flex-shrink:0;visibility:hidden;">${prefMontant}</span><span style="font-size:3.5mm;font-weight:bold;color:#222;white-space:normal;word-break:break-word;flex:0 1 auto;min-width:0;">${ligne1}</span></div>
     <div style="position:absolute;top:30mm;${espace}display:flex;align-items:flex-start;"><span style="font-size:3.5mm;font-weight:bold;color:#222;white-space:normal;word-break:break-word;flex:0 1 auto;min-width:0;">${ligne2}</span></div>
-    <div style="position:absolute;top:35mm;${espace}display:flex;align-items:flex-start;"><span style="font-size:2.5mm;font-weight:bold;color:#333;margin-right:2mm;flex-shrink:0;visibility:hidden;">${libOrdre}</span><span style="font-size:3.5mm;font-weight:bold;color:#222;white-space:normal;word-break:break-word;flex:0 1 auto;min-width:0;" dir="${detectDirection(cheque.beneficiaire)}">${cheque.beneficiaire || 'â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦'}</span></div>
-    <div style="position:absolute;${villeStyle}"><div style="display:flex;align-items:baseline;"><span style="font-size:2.5mm;color:#555;margin-right:1mm;">${libVille}</span><span style="font-size:3mm;font-weight:bold;color:#222;padding:0 2mm;" dir="${detectDirection(cheque.lieuEmission)}">${cheque.lieuEmission || 'â€¦â€¦â€¦â€¦â€¦'}</span></div><div style="display:flex;align-items:baseline;${dateStyle}"><span style="font-size:2.5mm;color:#555;margin-right:1mm;">${libDate}</span><span dir="ltr" style="font-size:3mm;font-weight:bold;color:#222;padding:0 2mm;">${cheque.date || 'â€¦/â€¦/â€¦â€¦'}</span></div></div>
+    <div style="position:absolute;top:35mm;${espace}display:flex;align-items:flex-start;"><span style="font-size:2.5mm;font-weight:bold;color:#333;margin-right:2mm;flex-shrink:0;visibility:hidden;">${libOrdre}</span><span style="font-size:3.5mm;font-weight:bold;color:#222;white-space:normal;word-break:break-word;flex:0 1 auto;min-width:0;" dir="${detectDirection(cheque.beneficiaire)}">${cheque.beneficiaire || '………………………………'}</span></div>
+    <div style="position:absolute;${villeStyle}"><div style="display:flex;align-items:baseline;"><span style="font-size:2.5mm;color:#555;margin-right:1mm;">${libVille}</span><span style="font-size:3mm;font-weight:bold;color:#222;padding:0 2mm;" dir="${detectDirection(cheque.lieuEmission)}">${cheque.lieuEmission || '……………'}</span></div><div style="display:flex;align-items:baseline;${dateStyle}"><span style="font-size:2.5mm;color:#555;margin-right:1mm;">${libDate}</span><span dir="ltr" style="font-size:3mm;font-weight:bold;color:#222;padding:0 2mm;">${cheque.date || '…/…/……'}</span></div></div>
   </div>`
 }
 
