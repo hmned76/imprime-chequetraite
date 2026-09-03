@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.log
+android/
+kembyela_*.txt
+.DS_Store
+Thumbs.db
