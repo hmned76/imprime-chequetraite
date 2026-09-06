@@ -1,0 +1,51 @@
+{
+  "name": "imprimechequetraite-tunisie",
+  "version": "3.0.0",
+  "description": "Application d'impression de chèques et traites bancaires pour la Tunisie",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "cd frontend && npm run dev",
+    "build:frontend": "cd frontend && npm run build",
+    "build:electron": "npm run build:frontend && electron-builder --win portable",
+    "build": "npm run build:electron",
+    "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && electron electron/main.js\"",
+    "start": "electron electron/main.js",
+    "install:all": "cd frontend && npm install",
+    "preview": "cd frontend && npm run preview"
+  },
+  "keywords": [
+    "cheque",
+    "traite",
+    "impression",
+    "tunisie",
+    "banque",
+    "electron",
+    "react"
+  ],
+  "author": "hmned76",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1",
+    "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.hmned76.imprimechequetraite",
+    "productName": "ImprimChèques Traites Tunisie",
+    "copyright": "Copyright © 2026 hmned76",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**/*",
+      "frontend/dist/**/*"
+    ],
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "signAndEditExecutable": false
+    }
+  }
+}

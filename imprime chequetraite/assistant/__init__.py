@@ -1,1 +1,0 @@
-"""Package AssistantAI : moteur IA, persistance et integrations."""
