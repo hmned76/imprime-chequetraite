@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 
 let mainWindow;
 
@@ -85,6 +86,9 @@ function createWindow() {
 }
 
 // ---- Impression via IPC ----
+// Dialogue d'impression intégré à l'app (style Chrome/Edge) : l'app affiche
+// l'aperçu à gauche et les options imprimante/copies/couleur à droite, puis
+// envoie directement à l'imprimante (silencieux, sans navigateur ni dialogue natif).
 function envoyerResultat(event, resultat) {
   try {
     if (event && event.sender && !event.sender.isDestroyed()) {
@@ -93,55 +97,79 @@ function envoyerResultat(event, resultat) {
   } catch (e) { /* le renderer peut être fermé */ }
 }
 
-ipcMain.on('print-html', (event, { html, w = 176, h = 80 } = {}) => {
+// Liste des imprimantes système pour la liste déroulante "Destination"
+ipcMain.handle('get-printers', async () => {
+  try {
+    const wc = mainWindow ? mainWindow.webContents : null;
+    if (!wc) return [];
+    const list = await wc.getPrintersAsync();
+    return list.map((p) => ({
+      name: p.name,
+      displayName: (p.displayName || p.name || 'Imprimante'),
+      isDefault: !!p.isDefault
+    }));
+  } catch (e) {
+    console.log('[print] getPrinters a échoué', e);
+    return [];
+  }
+});
+
+// Fenêtre d'impression cachée contenant UNIQUEMENT le document (valeurs seules)
+function creerFenetreImpression(html, widthMm, heightMm, deviceName, copies, color, cb) {
+  const css = `@page{size:${widthMm}mm ${heightMm}mm;margin:0}*{margin:0;padding:0;box-sizing:border-box}html,body{width:${widthMm}mm;height:${heightMm}mm;margin:0;padding:0;background:#fff;font-family:Arial,sans-serif;overflow:hidden}body{display:flex;align-items:flex-start;justify-content:flex-start}`;
+  const doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${css}</style></head><body>${html}</body></html>`;
+  const file = path.join(os.tmpdir(), `imprimcheques_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.html`);
+  try { fs.writeFileSync(file, doc, 'utf-8'); } catch (e) { cb('writeFailed:' + String(e && e.message || e)); return; }
+
+  const win = new BrowserWindow({
+    show: false,
+    webPreferences: { nodeIntegration: false, contextIsolation: true }
+  });
+
+  const cleanup = () => {
+    try { fs.unlinkSync(file); } catch (e) { /* déjà supprimé */ }
+    if (!win.isDestroyed()) win.destroy();
+  };
+
+  win.loadFile(file).then(() => {
+    setTimeout(() => {
+      win.webContents.print(
+        {
+          silent: true,
+          deviceName: deviceName || undefined,
+          copies: Math.max(1, Number(copies) || 1),
+          color: color !== false,
+          printBackground: true
+        },
+        (success, reason) => {
+          const res = success ? 'success' : (reason ? `printFailed:${reason}` : 'cancelled');
+          console.log('[print] resultat ->', res);
+          cleanup();
+          cb(res);
+        }
+      );
+    }, 350);
+  }).catch((err) => {
+    console.log('[print] chargement fenêtre échoué ->', String(err && err.message || err));
+    cleanup();
+    cb('loadFailed:' + String(err && err.message || err));
+  });
+}
+
+ipcMain.on('print-html', (event, { html, w = 176, h = 80, deviceName, copies, color } = {}) => {
   const widthMm = Math.max(50, Number(w) || 176);
   const heightMm = Math.max(40, Number(h) || 80);
-  const wc = mainWindow ? mainWindow.webContents : null;
-  if (!wc) { envoyerResultat(event, 'noMainWindow'); return; }
-
-  // Imprimer depuis la fenêtre principale (visible et stable) pour que le dialogue
-  // système Windows persiste. On y injecte un conteneur d'impression dédié.
-  const css = `@page{size:${widthMm}mm ${heightMm}mm;margin:0}`;
-  const js = `
-    (function(){
-      var old = document.getElementById('__printHost');
-      if (old) old.parentNode.removeChild(old);
-      var host = document.createElement('div');
-      host.id = '__printHost';
-      host.style.cssText = 'position:absolute;left:-9999px;top:0;width:${widthMm}mm;';
-      host.innerHTML = '<style>${css} *{margin:0;padding:0;box-sizing:border-box} html,body{background:#fff;font-family:Arial,sans-serif} </style>' + ${JSON.stringify(html)};
-      document.body.appendChild(host);
-      return true;
-    })()`;
-
-  wc.executeJavaScript(js, true).then(() => {
-    wc.print(
-      {
-        silent: false,
-        printBackground: true
-      },
-      (success, failureReason) => {
-        const res = success ? 'success' : (failureReason ? `printFailed:${failureReason}` : 'cancelled');
-        console.log('[print] resultat ->', res);
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          dialog.showMessageBox(mainWindow, {
-            type: success ? 'info' : 'warning',
-            title: 'Résultat impression',
-            message: 'Résultat du print : ' + res,
-            buttons: ['OK']
-          });
-        }
-        envoyerResultat(event, res);
-      }
-    );
-  }).catch((err) => {
-    const msg = `injectFailed:${String(err && err.message || err)}`;
-    console.log('[print] injection a échoué ->', msg);
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      dialog.showMessageBox(mainWindow, { type: 'error', title: 'Impression', message: msg, buttons: ['OK'] });
+  creerFenetreImpression(String(html || ''), widthMm, heightMm, deviceName, copies, color, (resultat) => {
+    if (resultat && resultat !== 'success' && resultat !== 'cancelled' && mainWindow && !mainWindow.isDestroyed()) {
+      dialog.showMessageBox(mainWindow, {
+        type: 'error',
+        title: 'Impression',
+        message: 'Échec de l\'impression',
+        detail: resultat,
+        buttons: ['OK']
+      });
     }
-    envoyerResultat(event, msg);
-    envoyerResultat(event, `injectFailed:${err && err.message ? err.message : String(err)}`);
+    envoyerResultat(event, resultat);
   });
 });
 

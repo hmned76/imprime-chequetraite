@@ -1,5 +1,7 @@
-import { useState, useCallback, useMemo, useEffect } from 'react'
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { FaPrint, FaCheck, FaFileInvoice, FaExchangeAlt, FaHistory, FaFileExcel, FaEye, FaBuilding, FaUser, FaCog, FaPlus, FaTrash, FaFolderOpen } from 'react-icons/fa'
+
+interface Imprimante { name: string; displayName: string; isDefault: boolean }
 
 const RE_ARA = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/
 
@@ -49,12 +51,12 @@ function montantEnLettresArabes(montant: number): string {
   return [dinarPart, millPart].filter(Boolean).join(' و')
 }
 
-function imprimerHTML(html: string, w = 176, h = 80) {
+function imprimerHTML(html: string, w = 176, h = 80, opts: { deviceName?: string; copies?: number; color?: boolean } = {}) {
   // Impression via Electron IPC (imprimante système) avec repli web
   const api = (window as any).electronAPI
   if (api && typeof api.printHTML === 'function') {
-    api.printHTML({ html, w, h })
-    console.log('[impression] IPC electronAPI envoyé', { w, h })
+    api.printHTML({ html, w, h, deviceName: opts.deviceName || undefined, copies: Math.max(1, opts.copies != null ? opts.copies : 1), color: opts.color !== false })
+    console.log('[impression] IPC electronAPI envoyé', { w, h, deviceName: opts.deviceName, copies: opts.copies, color: opts.color })
     return
   }
   console.warn('[impression] electronAPI absent — repli window.open')
@@ -140,18 +142,18 @@ function XS(d: string): string {
 }
 
 function B1(montant: string): string {
-  const e = parseFloat(montant)
-  if (isNaN(e)) return montant
-  const n = e.toFixed(3)
-  const [r, i] = n.split('.')
-  return `${r.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}.${i}`
-}
+    const e = parseFloat(montant)
+    if (isNaN(e)) return montant
+    const n = e.toFixed(3)
+    const [r, i] = n.split('.')
+    return `${r.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}.${i}`
+  }
 
-function x8(rib: string): string[] {
-  return rib.length !== 20 ? ['', '', '', ''] : [rib.slice(0, 2), rib.slice(2, 5), rib.slice(5, 18), rib.slice(18, 20)]
-}
+  function x8(rib: string): string[] {
+    return rib.length !== 20 ? ['', '', '', ''] : [rib.slice(0, 2), rib.slice(2, 5), rib.slice(5, 18), rib.slice(18, 20)]
+  }
 
-function v8(rib: string): string {
+  function v8(rib: string): string {
   return rib.replace(/(.{3})/g, '$1 ').trim()
 }
 
@@ -194,47 +196,8 @@ function montantEnLettresDT(t: number): string {
   return i
 }
 
-// ==== Images de fond : real.png (traite) + chèques par banque ====
-let realPngData: string = ''
+// ==== Images de fond : chèques par banque (aperçu seulement, impression = valeurs seules) ====
 const chequeBankData: Record<string, string> = {}
-function imgToDataUrl(regsrc: string): Promise<string> {
-  return new Promise<string>((resolve) => {
-    try {
-      const img = new Image()
-      img.onload = () => {
-        try {
-          const c = document.createElement('canvas')
-          c.width = img.naturalWidth; c.height = img.naturalHeight
-          const ctx = c.getContext('2d')
-          if (!ctx) { resolve(''); return }
-          ctx.drawImage(img, 0, 0)
-          resolve(c.toDataURL('image/png'))
-        } catch { resolve('') }
-      }
-      img.onerror = () => resolve('')
-      img.src = regsrc
-    } catch { resolve('') }
-  })
-}
-async function ensureRealPng(): Promise<string> {
-  if (realPngData) return realPngData
-  try {
-    const res = await fetch('./real.png')
-    const blob = await res.blob()
-    realPngData = await new Promise<string>((resolve) => {
-      const fr = new FileReader()
-      fr.onload = () => resolve(String(fr.result))
-      fr.onerror = () => resolve('')
-      fr.readAsDataURL(blob)
-    })
-    if (realPngData) return realPngData
-  } catch { /* fall through */ }
-  realPngData = await imgToDataUrl('./real.png')
-  return realPngData
-}
-function getRealPng(): string { return realPngData }
-// Charge le fond de chèque d'une banque : cheques/<abbr-lower>.png (ex. bz.png, uib.png)
-// Retourne '' si l'image n'existe pas (→ gabarit dessiné en code).
 async function ensureChequeBank(abbr: string): Promise<string> {
   if (!abbr) return ''
   const key = (abbr || '').toLowerCase()
@@ -256,7 +219,6 @@ async function ensureChequeBank(abbr: string): Promise<string> {
   } catch { chequeBankData[key] = ''; return '' }
 }
 function getChequeBank(abbr: string): string { return abbr ? (chequeBankData[(abbr || '').toLowerCase()] || '') : '' }
-void ensureRealPng()
 
 interface CompteForm {
   id: string
@@ -569,6 +531,39 @@ function AppPrincipal({ compte, onBack }: { compte: CompteForm; onBack: () => vo
 
   const [traite, setTraite] = useState<TraiteForm>(traiteVide())
 
+  const [impression, setImpression] = useState<{ html: string; w: number; h: number } | null>(null)
+  const [impPrimantes, setImpPrimantes] = useState<Imprimante[]>([])
+  const [impNom, setImpNom] = useState('')
+  const [impCopies, setImpCopies] = useState(1)
+  const [impCouleur, setImpCouleur] = useState(true)
+
+  const [toast, setToast] = useState<string | null>(null)
+  const toastTimer = useRef<number | null>(null)
+  const notif = useCallback((msg: string) => {
+    setToast(msg)
+    if (toastTimer.current) window.clearTimeout(toastTimer.current)
+    toastTimer.current = window.setTimeout(() => setToast(null), 3500)
+  }, [])
+
+  useEffect(() => {
+    const api = (window as any).electronAPI
+    if (api && typeof api.getPrinters === 'function') {
+      api.getPrinters().then((list: Imprimante[]) => {
+        const liste = Array.isArray(list) ? list : []
+        setImpPrimantes(liste)
+        const def = liste.find(p => p.isDefault) || liste[0]
+        setImpNom(prev => prev && liste.some(p => p.name === prev) ? prev : (def ? def.name : ''))
+      }).catch(() => {})
+    }
+    if (api && typeof api.onPrintResult === 'function') {
+      return api.onPrintResult((msg: string) => {
+        if (msg === 'success') notif('Impression envoyée avec succès ✓')
+        else if (msg === 'cancelled') { /* annulé */ }
+        else if (msg) notif('Problème d\'impression : ' + msg)
+      })
+    }
+  }, [notif])
+
   const [historique, setHistorique] = useState<HistoriqueItem[]>(loadHistorique)
   const [contacts, setContacts] = useState<Contact[]>(loadContacts)
 
@@ -590,15 +585,6 @@ function AppPrincipal({ compte, onBack }: { compte: CompteForm; onBack: () => vo
   const mlCheque = useMemo(() => montantEnLettres(parseFloat(cheque.montantChiffres) || 0), [cheque.montantChiffres])
   const mlChequeFinal = useMemo(() => (rtlCheque ? montantEnLettresArabes(parseFloat(cheque.montantChiffres) || 0) : mlCheque), [rtlCheque, mlCheque, cheque.montantChiffres])
   const mlTraite = useMemo(() => montantEnLettresDT(parseFloat(traite.montantChiffres) || 0), [traite.montantChiffres])
-
-  const dtMontantChiffres = useMemo(() => B1(traite.montantChiffres || '0').toUpperCase(), [traite.montantChiffres])
-  const dtMontantLettres = useMemo(() => mlTraite.toUpperCase(), [mlTraite])
-  const dtRibSplit = useMemo(() => x8(traite.rib || ''), [traite.rib])
-  const dtEmission = useMemo(() => XS(traite.dateEdition).toUpperCase(), [traite.dateEdition])
-  const dtEcheance = useMemo(() => XS(traite.dateEcheance).toUpperCase(), [traite.dateEcheance])
-  const dtLieu = useMemo(() => (traite.lieuCreation || '').toUpperCase(), [traite.lieuCreation])
-  const dtDom = useMemo(() => (traite.domiciliation || '').toUpperCase(), [traite.domiciliation])
-  const dtNomTire = useMemo(() => (traite.nomTire || '').toUpperCase(), [traite.nomTire])
 
   const addContact = useCallback((c: Omit<Contact, 'id'>) => {
     const nc = { ...c, id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) }
@@ -648,16 +634,19 @@ function AppPrincipal({ compte, onBack }: { compte: CompteForm; onBack: () => vo
 
   const printCheque = useCallback(() => {
     const html = getChequePrintHTML(cheque, compte, banqueChoisie, mlChequeFinal, rtlCheque)
-    imprimerHTML(html)
-    setCheque({ date: new Date().toLocaleDateString('fr-FR'), beneficiaire: '', montantChiffres: '', numeroCheque: '', lieuEmission: '', bare: true, langue: 'fr' })
+    setImpression({ html, w: 176, h: 80 })
   }, [cheque, compte, banqueChoisie, mlChequeFinal, rtlCheque])
 
-  const printTraite = useCallback(async () => {
-    await ensureRealPng()
-    const html = getTraitePrintHTML(traite, dtMontantChiffres, dtMontantLettres, dtRibSplit, dtEmission, dtEcheance, dtLieu, dtDom, dtNomTire)
-    imprimerHTML(html, 210, 140)
-    setTraite(traiteVide())
-  }, [traite, dtMontantChiffres, dtMontantLettres, dtRibSplit, dtEmission, dtEcheance, dtLieu, dtDom, dtNomTire])
+  const printTraite = useCallback(() => {
+    const html = getTraitePrintHTML(traite, mlTraite, traite.langue === 'ar')
+    setImpression({ html, w: 210, h: 100 })
+  }, [traite, mlTraite])
+
+  const lancerImpression = useCallback(() => {
+    if (!impression) return
+    imprimerHTML(impression.html, impression.w, impression.h, { deviceName: impNom || undefined, copies: impCopies, color: impCouleur })
+    setImpression(null)
+  }, [impression, impNom, impCopies, impCouleur])
 
   return (
     <div className="min-h-screen bg-gray-100 font-sans">
@@ -853,6 +842,119 @@ function AppPrincipal({ compte, onBack }: { compte: CompteForm; onBack: () => vo
           </div>
         </div>
       )}
+
+      {impression && (
+        <BoiteImpression
+          html={impression.html}
+          w={impression.w}
+          h={impression.h}
+          printers={impPrimantes}
+          printerName={impNom}
+          onPrinterName={setImpNom}
+          copies={impCopies}
+          onCopies={setImpCopies}
+          couleur={impCouleur}
+          onCouleur={setImpCouleur}
+          onPrint={lancerImpression}
+          onClose={() => setImpression(null)}
+        />
+      )}
+
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] bg-gray-900 text-white text-sm px-5 py-3 rounded-xl shadow-2xl">
+          {toast}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function BoiteImpression({ html, w, h, printers, printerName, onPrinterName, copies, onCopies, couleur, onCouleur, onPrint, onClose }: {
+  html: string; w: number; h: number; printers: Imprimante[]; printerName: string;
+  onPrinterName: (v: string) => void; copies: number; onCopies: (v: number) => void;
+  couleur: boolean; onCouleur: (v: boolean) => void; onPrint: () => void; onClose: () => void;
+}) {
+  const canvasRef = useRef<HTMLDivElement>(null)
+  const [zoom, setZoom] = useState(0.5)
+  useEffect(() => {
+    const maj = () => {
+      const el = canvasRef.current
+      if (!el) return
+      const cw = el.clientWidth, ch = el.clientHeight
+      const pw = (w * 96) / 25.4, ph = (h * 96) / 25.4
+      setZoom(Math.max(0.08, Math.min((cw * 0.9) / pw, (ch * 0.88) / ph)))
+    }
+    maj()
+    window.addEventListener('resize', maj)
+    return () => window.removeEventListener('resize', maj)
+  }, [w, h])
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col bg-white">
+      {/* Barre supérieure type Chrome */}
+      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200">
+        <h2 className="text-xl font-semibold text-gray-800">Imprimer</h2>
+        <div className="flex items-center gap-4">
+          <button onClick={onClose} className="text-sm font-medium text-blue-600 hover:text-blue-800">Annuler</button>
+          <button onClick={onPrint} className="flex items-center gap-2 bg-[#1a73e8] text-white px-5 py-2 rounded-md font-semibold hover:bg-[#1765cc]"><FaPrint /> Imprimer</button>
+        </div>
+      </div>
+
+      <div className="flex flex-1 min-h-0 flex-col lg:flex-row">
+        {/* Zone d'aperçu (gauche) */}
+        <div ref={canvasRef} className="flex-1 bg-gray-300 min-h-0 overflow-auto flex" >
+          <div className="m-auto p-6">
+            <div style={{ zoom }} className="mx-auto">
+              <div style={{ width: `${w}mm`, height: `${h}mm`, background: '#fff', boxShadow: '0 4px 20px rgba(0,0,0,0.4)', overflow: 'hidden' }} dangerouslySetInnerHTML={{ __html: html }} />
+            </div>
+            <div className="text-center text-sm text-gray-600 mt-3">1 / 1</div>
+          </div>
+        </div>
+
+        {/* Options (droite, type Chrome) */}
+        <div className="w-full lg:w-80 bg-white border-t lg:border-t-0 lg:border-l border-gray-200 p-6 space-y-6 shrink-0">
+          <div>
+            <div className="text-sm font-semibold text-gray-700 mb-1.5">Destination</div>
+            <select value={printerName} onChange={e => onPrinterName(e.target.value)} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+              {printers.length === 0 && <option value="">Aucune imprimante détectée</option>}
+              {printers.map(p => (
+                <option key={p.name} value={p.name}>{p.displayName}{p.isDefault ? ' (par défaut)' : ''}</option>
+              ))}
+            </select>
+            <p className="text-[11px] text-gray-500 mt-1">Impression directe sur cette imprimante.</p>
+          </div>
+
+          <div>
+            <div className="text-sm font-semibold text-gray-700 mb-1.5">Pages</div>
+            <div className="space-y-1.5 text-sm text-gray-700">
+              <label className="flex items-center gap-2"><input type="radio" checked readOnly className="accent-blue-600" /> Toutes</label>
+              <label className="flex items-center gap-2 opacity-50"><input type="radio" className="accent-blue-600" disabled /> Personnalisée…</label>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <div className="text-sm font-semibold text-gray-700 mb-1.5">Copies</div>
+              <input type="number" min={1} max={99} value={copies} onChange={e => onCopies(Math.max(1, parseInt(e.target.value) || 1))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <div className="text-sm font-semibold text-gray-700 mb-1.5">Couleur</div>
+              <select value={couleur ? 'color' : 'bw'} onChange={e => onCouleur(e.target.value === 'color')} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-white">
+                <option value="color">Couleur</option>
+                <option value="bw">Noir & blanc</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="border-t border-gray-100 pt-4 space-y-2 text-sm text-gray-700">
+            <div className="flex justify-between"><span className="text-gray-500">Format</span><span className="font-medium">{w} × {h} mm</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">Orientation</span><span className="font-medium">Paysage</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">Qualité</span><span className="font-medium">Élevée</span></div>
+          </div>
+
+          <p className="text-[11px] text-gray-400 pt-1">Impression des valeurs uniquement, sans fond du formulaire.</p>
+        </div>
+      </div>
     </div>
   )
 }
@@ -1137,10 +1239,7 @@ function getChequePrintHTML(cheque: ChequeForm, _compte: CompteForm, _banque: ty
   const villeStyle = rtl ? 'top:56mm;left:50%;transform:translateX(-50%);display:flex;align-items:baseline;gap:1mm;white-space:nowrap;direction:rtl;' : 'top:56mm;left:50%;transform:translateX(-50%);display:flex;align-items:baseline;gap:1mm;white-space:nowrap;'
   const dateStyle = ''
   const milliStyle = rtl ? 'font-style:normal;' : 'font-style:italic;'
-  const bg = _banque ? getChequeBank(_banque.abbr) : ''
-  const contStyle = bg
-    ? 'width:176mm;height:80mm;font-family:Arial,sans-serif;overflow:hidden;position:relative;background-image:url(' + bg + ');background-size:cover;background-position:center;margin:0;font-size:9px;'
-    : 'width:176mm;height:80mm;font-family:Arial,sans-serif;overflow:hidden;position:relative;background:transparent;margin:0;font-size:9px;'
+  const contStyle = 'width:176mm;height:80mm;font-family:Arial,sans-serif;overflow:hidden;position:relative;background:transparent;margin:0;font-size:9px;'
 
   return `<div class="cheque" style="${contStyle}">
     <div style="position:absolute;top:6mm;right:4mm;text-align:right;"><div style="font-size:4.5mm;font-family:monospace;font-weight:bold;color:#c00;">${m} DT</div></div>
@@ -1151,38 +1250,35 @@ function getChequePrintHTML(cheque: ChequeForm, _compte: CompteForm, _banque: ty
   </div>`
 }
 
-function getTraitePrintHTML(traite: TraiteForm, montCh: string, montLet: string, ribSplit: string[], emis: string, ech: string, lieu: string, dom: string, nomTire: string): string {
-  const [ribCode, ribAg, ribCompte, ribCle] = ribSplit
-  const bg = getRealPng() || './real.png'
-  const esc = (s: string) => String(s == null ? '' : s).replace(/\&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  const cell = (top: string, left: string, w: string, h: string, txt: string) =>
-    `<div style="position:absolute;top:${top};left:${left};width:${w};height:${h};display:flex;align-items:center;justify-content:center;font-weight:bold;color:#111;font-size:3mm;white-space:nowrap;overflow:hidden;direction:ltr;">${esc(txt)}</div>`
+function getTraitePrintHTML(traite: TraiteForm, ml: string, rtl = false): string {
+  const protest = traite.protestable ? (rtl ? 'قابل للاحتجاج' : 'Protestable') : (rtl ? 'غير قابل للاحتجاج' : 'Non protestable')
+  const m = traite.montantChiffres ? parseFloat(traite.montantChiffres).toFixed(3) : '__.___'
+  const eche = traite.dateEcheance ? XS(traite.dateEcheance) : '…/…/……'
+  const edit = traite.dateEdition ? XS(traite.dateEdition) : '…/…/……'
+  const mlText = (parseFloat(traite.montantChiffres) > 0 ? ml.toUpperCase() : '') || '……………………………'
+  const [le1, le2] = couperLignes(mlText, 70)
+  const cle = traite.rib && traite.rib.length === 20 ? traite.rib.slice(-1) : ''
+  const dir = rtl ? 'rtl' : 'ltr'
+  const ville = traite.lieuCreation
+  const payeur = traite.nomTire
+  const banque = traite.domiciliation
 
-  return `<div style="width:210mm;height:135mm;margin:0;background:#fff;">
-    <div style="width:175mm;height:115mm;margin:0 auto;background-image:url('${bg}');background-size:cover;background-position:center;padding:20mm;position:relative;">
-      ${cell('15mm','50mm','30mm','6mm',ech)}
-      ${cell('10mm','86mm','30mm','5mm',lieu)}
-      ${cell('15mm','86mm','30mm','7mm',emis)}
-      ${cell('24mm','135mm','39mm','6mm',montCh)}
-      ${cell('39mm','135mm','39mm','6mm',montCh)}
-      ${cell('24mm','49mm','11mm','7mm',ribCode)}
-      ${cell('24mm','60.5mm','11mm','7mm',ribAg)}
-      ${cell('24mm','72mm','44mm','7mm',ribCompte)}
-      ${cell('24mm','117mm','8mm','7mm',ribCle)}
-      ${cell('42mm','48mm','50mm','6mm',dom)}
-      ${traite.nomTireur ? cell('38mm','3mm','41mm','8mm',traite.nomTireur.toUpperCase()) : ''}
-      ${cell('49mm','16mm','149mm','6mm',montLet)}
-      ${cell('74mm','77mm','39mm','9mm',nomTire)}
-      ${cell('84mm','77mm','39mm','9mm',esc(traite.adresseTire || '').toUpperCase())}
-      ${cell('69mm','119mm','55mm','11mm',dom)}
-      ${cell('58mm','58mm','27mm','6mm',ech)}
-      ${cell('58mm','3mm','26mm','6mm',lieu)}
-      ${cell('58mm','31mm','26mm','6mm',emis)}
-      ${cell('69mm','3mm','6mm','6.5mm',ribCode)}
-      ${cell('69mm','10mm','10mm','6.5mm',ribAg)}
-      ${cell('69mm','21mm','46mm','6.5mm',ribCompte)}
-      ${cell('69mm','68mm','7mm','6.5mm',ribCle)}
-      ${cell('82mm','42mm','30mm','12mm',esc(traite.aval || '').toUpperCase())}
-    </div>
+  return `<div class="traite" style="width:210mm;height:100mm;margin:0;font-family:Arial,sans-serif;overflow:hidden;position:relative;background:transparent;font-size:3mm;">
+    <div style="position:absolute;top:15mm;left:158mm;right:6mm;text-align:right;"><span dir="ltr" style="font-weight:bold;color:#222;font-size:3.2mm;">${eche}</span></div>
+    <div style="position:absolute;top:23mm;left:5mm;"><span style="font-weight:bold;color:#222;">${ville || '……………'}</span></div>
+    <div style="position:absolute;top:23mm;left:60mm;"><span dir="ltr" style="font-weight:bold;color:#222;">${edit}</span></div>
+    <div style="position:absolute;top:26mm;right:6mm;text-align:right;font-family:monospace;font-size:4.5mm;font-weight:bold;color:#c00;"><span dir="ltr">${m}</span> ${traite.monnaie || 'DT'}</div>
+    <div style="position:absolute;top:41mm;left:82mm;font-size:2.6mm;font-weight:bold;color:#222;">${protest}</div>
+    <div style="position:absolute;top:46mm;left:85mm;"><span dir="${detectDirection(payeur)}" style="font-weight:bold;color:#222;">${payeur}</span></div>
+    <div style="position:absolute;top:53mm;left:85mm;"><span dir="${detectDirection(traite.ordre)}" style="font-weight:bold;color:#222;">${traite.ordre}</span></div>
+    <div style="position:absolute;top:68mm;left:5mm;right:130mm;font-weight:bold;color:#222;font-size:3.5mm;white-space:normal;word-break:break-word;direction:${dir};">${le1}</div>
+    ${le2 !== '……………………………' ? `<div style="position:absolute;top:73mm;left:5mm;right:130mm;font-weight:bold;color:#222;font-size:3.5mm;white-space:normal;word-break:break-word;direction:${dir};">${le2}</div>` : ''}
+    <div style="position:absolute;top:76mm;left:60mm;"><span dir="${detectDirection(ville)}" style="font-weight:bold;color:#222;">${ville}</span></div>
+    <div style="position:absolute;top:76mm;left:145mm;"><span dir="ltr" style="font-weight:bold;color:#222;">${edit}</span></div>
+    <div style="position:absolute;top:82mm;left:60mm;"><span dir="ltr" style="font-weight:bold;color:#222;">${eche}</span></div>
+    <div style="position:absolute;top:89mm;left:60mm;"><span dir="ltr" style="font-weight:bold;color:#222;font-family:monospace;letter-spacing:0.3mm;">${traite.rib || '00000000000000000000'}</span></div>
+    <div style="position:absolute;top:89mm;left:155mm;"><span dir="ltr" style="font-weight:bold;color:#222;">${cle || '・'}</span></div>
+    <div style="position:absolute;top:95mm;left:60mm;"><span style="font-weight:bold;color:#222;">${banque}</span></div>
+    ${traite.aval ? `<div style="position:absolute;top:97mm;left:126mm;font-weight:bold;color:#222;font-size:2.5mm;" dir="${detectDirection(traite.aval)}">${traite.aval}</div>` : ''}
   </div>`
 }
