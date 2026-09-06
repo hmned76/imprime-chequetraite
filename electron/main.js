@@ -115,9 +115,14 @@ ipcMain.handle('get-printers', async () => {
 });
 
 // Fenêtre d'impression cachée contenant UNIQUEMENT le document (valeurs seules)
-function creerFenetreImpression(html, widthMm, heightMm, deviceName, copies, color, cb) {
+// offsetX / offsetY (mm) : décale l'ensemble des valeurs sur le papier pour caler
+// l'impression sur le formulaire pré-imprimé (guide-papier / orientation 180°).
+function creerFenetreImpression(html, widthMm, heightMm, deviceName, copies, color, offsetX, offsetY, cb) {
   const css = `@page{size:${widthMm}mm ${heightMm}mm;margin:0}*{margin:0;padding:0;box-sizing:border-box}html,body{width:${widthMm}mm;height:${heightMm}mm;margin:0;padding:0;background:#fff;font-family:Arial,sans-serif;overflow:hidden}body{display:flex;align-items:flex-start;justify-content:flex-start}`;
-  const doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${css}</style></head><body>${html}</body></html>`;
+  const decalage = (offsetX && offsetY)
+    ? `<div style="width:${widthMm}mm;height:${heightMm}mm;transform:translate(${offsetX}mm,${offsetY}mm)">${html}</div>`
+    : html;
+  const doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${css}</style></head><body>${decalage}</body></html>`;
   const file = path.join(os.tmpdir(), `imprimcheques_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.html`);
   try { fs.writeFileSync(file, doc, 'utf-8'); } catch (e) { cb('writeFailed:' + String(e && e.message || e)); return; }
 
@@ -156,10 +161,12 @@ function creerFenetreImpression(html, widthMm, heightMm, deviceName, copies, col
   });
 }
 
-ipcMain.on('print-html', (event, { html, w = 176, h = 80, deviceName, copies, color } = {}) => {
+ipcMain.on('print-html', (event, { html, w = 176, h = 80, deviceName, copies, color, offsetX, offsetY } = {}) => {
   const widthMm = Math.max(50, Number(w) || 176);
   const heightMm = Math.max(40, Number(h) || 80);
-  creerFenetreImpression(String(html || ''), widthMm, heightMm, deviceName, copies, color, (resultat) => {
+  const ox = parseFloat(offsetX) || 0;
+  const oy = parseFloat(offsetY) || 0;
+  creerFenetreImpression(String(html || ''), widthMm, heightMm, deviceName, copies, color, ox, oy, (resultat) => {
     if (resultat && resultat !== 'success' && resultat !== 'cancelled' && mainWindow && !mainWindow.isDestroyed()) {
       dialog.showMessageBox(mainWindow, {
         type: 'error',

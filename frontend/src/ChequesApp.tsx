@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
-import { FaPrint, FaCheck, FaFileInvoice, FaExchangeAlt, FaHistory, FaFileExcel, FaEye, FaBuilding, FaUser, FaCog, FaPlus, FaTrash, FaFolderOpen } from 'react-icons/fa'
+import { FaPrint, FaCheck, FaFileInvoice, FaExchangeAlt, FaHistory, FaFileExcel, FaEye, FaBuilding, FaUser, FaCog, FaPlus, FaTrash, FaFolderOpen, FaExclamationTriangle } from 'react-icons/fa'
 
 interface Imprimante { name: string; displayName: string; isDefault: boolean }
 
@@ -51,12 +51,12 @@ function montantEnLettresArabes(montant: number): string {
   return [dinarPart, millPart].filter(Boolean).join(' و')
 }
 
-function imprimerHTML(html: string, w = 176, h = 80, opts: { deviceName?: string; copies?: number; color?: boolean } = {}) {
+function imprimerHTML(html: string, w = 176, h = 80, opts: { deviceName?: string; copies?: number; color?: boolean; offsetX?: number; offsetY?: number } = {}) {
   // Impression via Electron IPC (imprimante système) avec repli web
   const api = (window as any).electronAPI
   if (api && typeof api.printHTML === 'function') {
-    api.printHTML({ html, w, h, deviceName: opts.deviceName || undefined, copies: Math.max(1, opts.copies != null ? opts.copies : 1), color: opts.color !== false })
-    console.log('[impression] IPC electronAPI envoyé', { w, h, deviceName: opts.deviceName, copies: opts.copies, color: opts.color })
+    api.printHTML({ html, w, h, deviceName: opts.deviceName || undefined, copies: Math.max(1, opts.copies != null ? opts.copies : 1), color: opts.color !== false, offsetX: opts.offsetX || 0, offsetY: opts.offsetY || 0 })
+    console.log('[impression] IPC electronAPI envoyé', { w, h, deviceName: opts.deviceName, copies: opts.copies, color: opts.color, offsetX: opts.offsetX, offsetY: opts.offsetY })
     return
   }
   console.warn('[impression] electronAPI absent — repli window.open')
@@ -537,6 +537,16 @@ function AppPrincipal({ compte, onBack }: { compte: CompteForm; onBack: () => vo
   const [impCopies, setImpCopies] = useState(1)
   const [impCouleur, setImpCouleur] = useState(true)
 
+  // Offsets par type de document (sauvegardés)
+  const [offsetCheque, setOffsetCheque] = useState<{ x: number; y: number }>(() => {
+    try { const s = localStorage.getItem('offset-cheque'); return s ? JSON.parse(s) : { x: 0, y: 0 }; } catch { return { x: 0, y: 0 }; }
+  })
+  const [offsetTraite, setOffsetTraite] = useState<{ x: number; y: number }>(() => {
+    try { const s = localStorage.getItem('offset-traite'); return s ? JSON.parse(s) : { x: 0, y: 0 }; } catch { return { x: 0, y: 0 }; }
+  })
+  const [impOffsetX, setImpOffsetX] = useState(0)
+  const [impOffsetY, setImpOffsetY] = useState(0)
+
   const [toast, setToast] = useState<string | null>(null)
   const toastTimer = useRef<number | null>(null)
   const notif = useCallback((msg: string) => {
@@ -634,19 +644,36 @@ function AppPrincipal({ compte, onBack }: { compte: CompteForm; onBack: () => vo
 
   const printCheque = useCallback(() => {
     const html = getChequePrintHTML(cheque, compte, banqueChoisie, mlChequeFinal, rtlCheque)
+    setImpOffsetX(offsetCheque.x)
+    setImpOffsetY(offsetCheque.y)
     setImpression({ html, w: 176, h: 80 })
-  }, [cheque, compte, banqueChoisie, mlChequeFinal, rtlCheque])
+  }, [cheque, compte, banqueChoisie, mlChequeFinal, rtlCheque, offsetCheque])
 
   const printTraite = useCallback(() => {
-    const html = getTraitePrintHTML(traite, mlTraite, traite.langue === 'ar')
-    setImpression({ html, w: 210, h: 100 })
-  }, [traite, mlTraite])
+    const html = getTraitePrintHTML(traite)
+    setImpOffsetX(offsetTraite.x)
+    setImpOffsetY(offsetTraite.y)
+    setImpression({ html, w: 210, h: 137 })
+  }, [traite, offsetTraite])
 
   const lancerImpression = useCallback(() => {
     if (!impression) return
-    imprimerHTML(impression.html, impression.w, impression.h, { deviceName: impNom || undefined, copies: impCopies, color: impCouleur })
+    imprimerHTML(impression.html, impression.w, impression.h, { deviceName: impNom || undefined, copies: impCopies, color: impCouleur, offsetX: impOffsetX, offsetY: impOffsetY })
+    // Sauvegarder les offsets selon le type de document
+    if (impression.w === 176 && impression.h === 80) {
+      setOffsetCheque({ x: impOffsetX, y: impOffsetY })
+      localStorage.setItem('offset-cheque', JSON.stringify({ x: impOffsetX, y: impOffsetY }))
+    } else {
+      setOffsetTraite({ x: impOffsetX, y: impOffsetY })
+      localStorage.setItem('offset-traite', JSON.stringify({ x: impOffsetX, y: impOffsetY }))
+    }
     setImpression(null)
-  }, [impression, impNom, impCopies, impCouleur])
+  }, [impression, impNom, impCopies, impCouleur, impOffsetX, impOffsetY])
+
+  const imprimerGrille = useCallback((w: number, h: number) => {
+    const grilleHtml = `<div style="width:${w}mm;height:${h}mm;background:repeating-linear-gradient(0deg,transparent,transparent 9.9mm,#000 10mm),repeating-linear-gradient(90deg,transparent,transparent 9.9mm,#000 10mm);"></div>`
+    imprimerHTML(grilleHtml, w, h)
+  }, [])
 
   return (
     <div className="min-h-screen bg-gray-100 font-sans">
@@ -857,6 +884,11 @@ function AppPrincipal({ compte, onBack }: { compte: CompteForm; onBack: () => vo
           onCouleur={setImpCouleur}
           onPrint={lancerImpression}
           onClose={() => setImpression(null)}
+          offsetX={impOffsetX}
+          onOffsetX={setImpOffsetX}
+          offsetY={impOffsetY}
+          onOffsetY={setImpOffsetY}
+          onGrid={() => imprimerGrille(impression.w, impression.h)}
         />
       )}
 
@@ -869,10 +901,11 @@ function AppPrincipal({ compte, onBack }: { compte: CompteForm; onBack: () => vo
   )
 }
 
-function BoiteImpression({ html, w, h, printers, printerName, onPrinterName, copies, onCopies, couleur, onCouleur, onPrint, onClose }: {
+function BoiteImpression({ html, w, h, printers, printerName, onPrinterName, copies, onCopies, couleur, onCouleur, onPrint, onClose, offsetX, onOffsetX, offsetY, onOffsetY, onGrid }: {
   html: string; w: number; h: number; printers: Imprimante[]; printerName: string;
   onPrinterName: (v: string) => void; copies: number; onCopies: (v: number) => void;
   couleur: boolean; onCouleur: (v: boolean) => void; onPrint: () => void; onClose: () => void;
+  offsetX: number; onOffsetX: (v: number) => void; offsetY: number; onOffsetY: (v: number) => void; onGrid: () => void;
 }) {
   const canvasRef = useRef<HTMLDivElement>(null)
   const [zoom, setZoom] = useState(0.5)
@@ -896,6 +929,7 @@ function BoiteImpression({ html, w, h, printers, printerName, onPrinterName, cop
         <h2 className="text-xl font-semibold text-gray-800">Imprimer</h2>
         <div className="flex items-center gap-4">
           <button onClick={onClose} className="text-sm font-medium text-blue-600 hover:text-blue-800">Annuler</button>
+          <button onClick={onGrid} className="flex items-center gap-1.5 bg-gray-200 text-gray-700 px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-300"><FaFileInvoice /> Grille 10 mm</button>
           <button onClick={onPrint} className="flex items-center gap-2 bg-[#1a73e8] text-white px-5 py-2 rounded-md font-semibold hover:bg-[#1765cc]"><FaPrint /> Imprimer</button>
         </div>
       </div>
@@ -912,7 +946,16 @@ function BoiteImpression({ html, w, h, printers, printerName, onPrinterName, cop
         </div>
 
         {/* Options (droite, type Chrome) */}
-        <div className="w-full lg:w-80 bg-white border-t lg:border-t-0 lg:border-l border-gray-200 p-6 space-y-6 shrink-0">
+        <div className="w-full lg:w-96 bg-white border-t lg:border-t-0 lg:border-l border-gray-200 p-6 space-y-5 shrink-0">
+          {/* Notice papier */}
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
+            <div className="font-semibold flex items-center gap-1.5 mb-2"><FaExclamationTriangle /> Notice papier</div>
+            <ul className="list-disc list-inside space-y-1">
+              <li>Insérez la traite/chèque <b>à l'envers (180°)</b> dans le bac.</li>
+              <li>Plaquez-la <b>contre le bord droit</b> du bac (guide-papier serré).</li>
+            </ul>
+          </div>
+
           <div>
             <div className="text-sm font-semibold text-gray-700 mb-1.5">Destination</div>
             <select value={printerName} onChange={e => onPrinterName(e.target.value)} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -946,6 +989,19 @@ function BoiteImpression({ html, w, h, printers, printerName, onPrinterName, cop
             </div>
           </div>
 
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <div className="text-sm font-semibold text-gray-700 mb-1.5">Offset X (mm)</div>
+              <input type="number" step="0.5" min="-50" max="50" value={offsetX} onChange={e => onOffsetX(parseFloat(e.target.value) || 0)} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" />
+              <p className="text-[10px] text-gray-500 mt-1">+ = droite, − = gauche</p>
+            </div>
+            <div>
+              <div className="text-sm font-semibold text-gray-700 mb-1.5">Offset Y (mm)</div>
+              <input type="number" step="0.5" min="-50" max="50" value={offsetY} onChange={e => onOffsetY(parseFloat(e.target.value) || 0)} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" />
+              <p className="text-[10px] text-gray-500 mt-1">+ = bas, − = haut</p>
+            </div>
+          </div>
+
           <div className="border-t border-gray-100 pt-4 space-y-2 text-sm text-gray-700">
             <div className="flex justify-between"><span className="text-gray-500">Format</span><span className="font-medium">{w} × {h} mm</span></div>
             <div className="flex justify-between"><span className="text-gray-500">Orientation</span><span className="font-medium">Paysage</span></div>
@@ -953,6 +1009,11 @@ function BoiteImpression({ html, w, h, printers, printerName, onPrinterName, cop
           </div>
 
           <p className="text-[11px] text-gray-400 pt-1">Impression des valeurs uniquement, sans fond du formulaire.</p>
+
+          <div className="flex gap-2 pt-2">
+            <button onClick={onPrint} className="flex-1 flex items-center justify-center gap-2 bg-[#1a73e8] text-white px-4 py-2.5 rounded-lg font-bold hover:bg-[#1765cc]"><FaPrint /> Imprimer</button>
+            <button onClick={onClose} className="bg-gray-200 px-4 py-2.5 rounded-lg font-bold hover:bg-gray-300">Annuler</button>
+          </div>
         </div>
       </div>
     </div>
@@ -1228,9 +1289,12 @@ function PageHistorique({ historique, onDel, onClear, onExport }: { historique: 
 }
 
 function getChequePrintHTML(cheque: ChequeForm, _compte: CompteForm, _banque: typeof BANQUES[0] | undefined, ml: string, rtl = false): string {
-  const mlText = ml ? ml : '……………………………'
+  const mlText = ml || ''
   const m = cheque.montantChiffres ? parseFloat(cheque.montantChiffres).toFixed(3) : '__.___'
-  const [ligne1, ligne2] = couperLignes(mlText)
+  const [l1brut, l2brut] = couperLignes(mlText)
+  const quePoints = (s: string) => s.trim() !== '' && /^[….…\s]*$/.test(s.trim())
+  const ligne1 = quePoints(l1brut) ? '' : l1brut
+  const ligne2 = (l2brut.trim() === '' || quePoints(l2brut)) ? '' : l2brut
   const prefMontant = rtl ? 'ادفعوا بمقتضى هذا الشيك غير القابل للتظهير :' : 'Payez contre ce chèque non endossable :'
   const libOrdre = rtl ? 'لأمر :' : "A l'ordre de :"
   const libVille = rtl ? 'البلدة :' : 'Ville :'
@@ -1245,40 +1309,54 @@ function getChequePrintHTML(cheque: ChequeForm, _compte: CompteForm, _banque: ty
     <div style="position:absolute;top:6mm;right:4mm;text-align:right;"><div style="font-size:4.5mm;font-family:monospace;font-weight:bold;color:#c00;">${m} DT</div></div>
     <div style="position:absolute;top:25mm;${espace}display:flex;align-items:flex-start;"><span style="font-size:2.5mm;color:#555;${milliStyle}margin-right:2mm;white-space:nowrap;flex-shrink:0;visibility:hidden;">${prefMontant}</span><span style="font-size:3.5mm;font-weight:bold;color:#222;white-space:normal;word-break:break-word;flex:0 1 auto;min-width:0;">${ligne1}</span></div>
     <div style="position:absolute;top:30mm;${espace}display:flex;align-items:flex-start;"><span style="font-size:3.5mm;font-weight:bold;color:#222;white-space:normal;word-break:break-word;flex:0 1 auto;min-width:0;">${ligne2}</span></div>
-    <div style="position:absolute;top:35mm;${espace}display:flex;align-items:flex-start;"><span style="font-size:2.5mm;font-weight:bold;color:#333;margin-right:2mm;flex-shrink:0;visibility:hidden;">${libOrdre}</span><span style="font-size:3.5mm;font-weight:bold;color:#222;white-space:normal;word-break:break-word;flex:0 1 auto;min-width:0;" dir="${detectDirection(cheque.beneficiaire)}">${cheque.beneficiaire || '………………………………'}</span></div>
-    <div style="position:absolute;${villeStyle}"><div style="display:flex;align-items:baseline;"><span style="font-size:2.5mm;color:#555;margin-right:1mm;">${libVille}</span><span style="font-size:3mm;font-weight:bold;color:#222;padding:0 2mm;" dir="${detectDirection(cheque.lieuEmission)}">${cheque.lieuEmission || '……………'}</span></div><div style="display:flex;align-items:baseline;${dateStyle}"><span style="font-size:2.5mm;color:#555;margin-right:1mm;">${libDate}</span><span dir="ltr" style="font-size:3mm;font-weight:bold;color:#222;padding:0 2mm;">${cheque.date || '…/…/……'}</span></div></div>
+    <div style="position:absolute;top:35mm;${espace}display:flex;align-items:flex-start;"><span style="font-size:2.5mm;font-weight:bold;color:#333;margin-right:2mm;flex-shrink:0;visibility:hidden;">${libOrdre}</span><span style="font-size:3.5mm;font-weight:bold;color:#222;white-space:normal;word-break:break-word;flex:0 1 auto;min-width:0;" dir="${detectDirection(cheque.beneficiaire)}">${cheque.beneficiaire || ''}</span></div>
+    <div style="position:absolute;${villeStyle}"><div style="display:flex;align-items:baseline;"><span style="font-size:2.5mm;color:#555;margin-right:1mm;">${libVille}</span><span style="font-size:3mm;font-weight:bold;color:#222;padding:0 2mm;" dir="${detectDirection(cheque.lieuEmission)}">${cheque.lieuEmission || ''}</span></div><div style="display:flex;align-items:baseline;${dateStyle}"><span style="font-size:2.5mm;color:#555;margin-right:1mm;">${libDate}</span><span dir="ltr" style="font-size:3mm;font-weight:bold;color:#222;padding:0 2mm;">${cheque.date || ''}</span></div></div>
   </div>`
 }
 
-function getTraitePrintHTML(traite: TraiteForm, ml: string, rtl = false): string {
-  const protest = traite.protestable ? (rtl ? 'قابل للاحتجاج' : 'Protestable') : (rtl ? 'غير قابل للاحتجاج' : 'Non protestable')
-  const m = traite.montantChiffres ? parseFloat(traite.montantChiffres).toFixed(3) : '__.___'
-  const eche = traite.dateEcheance ? XS(traite.dateEcheance) : '…/…/……'
-  const edit = traite.dateEdition ? XS(traite.dateEdition) : '…/…/……'
-  const mlText = (parseFloat(traite.montantChiffres) > 0 ? ml.toUpperCase() : '') || '……………………………'
-  const [le1, le2] = couperLignes(mlText, 70)
-  const cle = traite.rib && traite.rib.length === 20 ? traite.rib.slice(-1) : ''
-  const dir = rtl ? 'rtl' : 'ltr'
-  const ville = traite.lieuCreation
-  const payeur = traite.nomTire
-  const banque = traite.domiciliation
+function getTraitePrintHTML(traite: TraiteForm): string {
+  const [ribCode, ribAg, ribCompte, ribCle] = x8(traite.rib || '')
+  const montCh = B1(traite.montantChiffres || '0').toUpperCase()
+  const montLet = montantEnLettresDT(parseFloat(traite.montantChiffres) || 0).toUpperCase()
+  const emis = XS(traite.dateEdition).toUpperCase()
+  const ech = XS(traite.dateEcheance).toUpperCase()
+  const lieu = (traite.lieuCreation || '').toUpperCase()
+  const dom = (traite.domiciliation || '').toUpperCase()
+  const nomTire = (traite.nomTire || '').toUpperCase()
+  const addrTire = (traite.adresseTire || '').toUpperCase()
+  const nomTireur = (traite.nomTireur || '').toUpperCase()
+  const aval = (traite.aval || '').toUpperCase()
+  // Mêmes cases que l'aperçu (boîte 175×115 sur l'image du formulaire),
+  // mises à l'échelle ×1.2 vers la page 210×137 — valeurs seules, sans fond.
+  const S = 1.2
+  const mm = (v: number) => `${Math.round(v * S * 10) / 10}mm`
+  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const cell = (top: number, left: number, w: number, h: number, txt: string) =>
+    `<div style="position:absolute;top:${mm(top)};left:${mm(left)};width:${mm(w)};height:${mm(h)};display:flex;align-items:center;justify-content:center;font-weight:bold;color:#111;font-size:3.6mm;white-space:nowrap;overflow:hidden;direction:ltr;">${esc(txt)}</div>`
 
-  return `<div class="traite" style="width:210mm;height:100mm;margin:0;font-family:Arial,sans-serif;overflow:hidden;position:relative;background:transparent;font-size:3mm;">
-    <div style="position:absolute;top:15mm;left:158mm;right:6mm;text-align:right;"><span dir="ltr" style="font-weight:bold;color:#222;font-size:3.2mm;">${eche}</span></div>
-    <div style="position:absolute;top:23mm;left:5mm;"><span style="font-weight:bold;color:#222;">${ville || '……………'}</span></div>
-    <div style="position:absolute;top:23mm;left:60mm;"><span dir="ltr" style="font-weight:bold;color:#222;">${edit}</span></div>
-    <div style="position:absolute;top:26mm;right:6mm;text-align:right;font-family:monospace;font-size:4.5mm;font-weight:bold;color:#c00;"><span dir="ltr">${m}</span> ${traite.monnaie || 'DT'}</div>
-    <div style="position:absolute;top:41mm;left:82mm;font-size:2.6mm;font-weight:bold;color:#222;">${protest}</div>
-    <div style="position:absolute;top:46mm;left:85mm;"><span dir="${detectDirection(payeur)}" style="font-weight:bold;color:#222;">${payeur}</span></div>
-    <div style="position:absolute;top:53mm;left:85mm;"><span dir="${detectDirection(traite.ordre)}" style="font-weight:bold;color:#222;">${traite.ordre}</span></div>
-    <div style="position:absolute;top:68mm;left:5mm;right:130mm;font-weight:bold;color:#222;font-size:3.5mm;white-space:normal;word-break:break-word;direction:${dir};">${le1}</div>
-    ${le2 !== '……………………………' ? `<div style="position:absolute;top:73mm;left:5mm;right:130mm;font-weight:bold;color:#222;font-size:3.5mm;white-space:normal;word-break:break-word;direction:${dir};">${le2}</div>` : ''}
-    <div style="position:absolute;top:76mm;left:60mm;"><span dir="${detectDirection(ville)}" style="font-weight:bold;color:#222;">${ville}</span></div>
-    <div style="position:absolute;top:76mm;left:145mm;"><span dir="ltr" style="font-weight:bold;color:#222;">${edit}</span></div>
-    <div style="position:absolute;top:82mm;left:60mm;"><span dir="ltr" style="font-weight:bold;color:#222;">${eche}</span></div>
-    <div style="position:absolute;top:89mm;left:60mm;"><span dir="ltr" style="font-weight:bold;color:#222;font-family:monospace;letter-spacing:0.3mm;">${traite.rib || '00000000000000000000'}</span></div>
-    <div style="position:absolute;top:89mm;left:155mm;"><span dir="ltr" style="font-weight:bold;color:#222;">${cle || '・'}</span></div>
-    <div style="position:absolute;top:95mm;left:60mm;"><span style="font-weight:bold;color:#222;">${banque}</span></div>
-    ${traite.aval ? `<div style="position:absolute;top:97mm;left:126mm;font-weight:bold;color:#222;font-size:2.5mm;" dir="${detectDirection(traite.aval)}">${traite.aval}</div>` : ''}
+  return `<div class="traite" style="width:210mm;height:137mm;margin:0;font-family:Arial,sans-serif;overflow:hidden;position:relative;background:transparent;">
+    ${cell(15,50,30,6,ech)}
+    ${cell(10,86,30,5,lieu)}
+    ${cell(15,86,30,7,emis)}
+    ${cell(24,135,39,6,montCh)}
+    ${cell(39,135,39,6,montCh)}
+    ${cell(24,49,11,7,ribCode)}
+    ${cell(24,60.5,11,7,ribAg)}
+    ${cell(24,72,44,7,ribCompte)}
+    ${cell(24,117,8,7,ribCle)}
+    ${cell(42,48,50,6,dom)}
+    ${traite.nomTireur ? cell(38,3,41,8,nomTireur) : ''}
+    ${cell(49,16,149,6,montLet)}
+    ${cell(74,77,39,9,nomTire)}
+    ${cell(84,77,39,9,addrTire)}
+    ${cell(69,119,55,11,dom)}
+    ${cell(58,58,27,6,ech)}
+    ${cell(58,3,26,6,lieu)}
+    ${cell(58,31,26,6,emis)}
+    ${cell(69,3,6,6.5,ribCode)}
+    ${cell(69,10,10,6.5,ribAg)}
+    ${cell(69,21,46,6.5,ribCompte)}
+    ${cell(69,68,7,6.5,ribCle)}
+    ${cell(82,42,30,12,aval)}
   </div>`
 }
