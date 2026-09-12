@@ -114,11 +114,76 @@ ipcMain.handle('get-printers', async () => {
   }
 });
 
+// ==== Scans de chèques par banque (aperçu à l'écran uniquement) ====
+// L'utilisateur scanne son chèque réel : stocké dans %APPDATA%\imprimcheques\cheques\{abbr}.{ext}
+function dossierScans() { return path.join(app.getPath('appData'), 'imprimcheques', 'cheques'); }
+
+// Import d'un scan : dialogue de sélection, copie dans le dossier dédié
+ipcMain.handle('import-scan', async (event, abbr) => {
+  const code = String(abbr || '').toLowerCase();
+  if (!code) return { ok: false, error: 'Banque inconnue' };
+  const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+  const res = await dialog.showOpenDialog(win, {
+    title: 'Importer le scan du chèque (' + code.toUpperCase() + ')',
+    properties: ['openFile'],
+    filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'bmp', 'webp', 'gif'] }]
+  });
+  if (res.canceled || !res.filePaths || !res.filePaths.length) return { ok: false, canceled: true };
+  const src = res.filePaths[0];
+  const ext = (path.extname(src) || '.png').slice(1).toLowerCase() || 'png';
+  try {
+    const dir = dossierScans();
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const existing = fs.readdirSync(dir).filter((f) => f.toLowerCase().startsWith(code + '.'));
+    for (const f of existing) { try { fs.unlinkSync(path.join(dir, f)); } catch (e) { /* ignore */ } }
+    fs.copyFileSync(src, path.join(dir, code + '.' + ext));
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e && e.message || e) };
+  }
+});
+
+// Lecture d'un scan : renvoie une data URL (évite les blocages file:// avec webSecurity)
+ipcMain.handle('get-cheque-scan', async (_event, abbr) => {
+  const code = String(abbr || '').toLowerCase();
+  if (!code) return '';
+  const mimes = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', bmp: 'image/bmp', webp: 'image/webp', gif: 'image/gif' };
+  try {
+    const dir = dossierScans();
+    if (!fs.existsSync(dir)) return '';
+    const found = fs.readdirSync(dir).find((f) => f.toLowerCase().startsWith(code + '.'));
+    if (!found) return '';
+    const data = fs.readFileSync(path.join(dir, found));
+    const mime = mimes[path.extname(found).slice(1).toLowerCase()] || 'image/png';
+    return `data:${mime};base64,${data.toString('base64')}`;
+  } catch (e) {
+    return '';
+  }
+});
+
+// Suppression d'un scan importé (retour à l'image par défaut / placeholder)
+ipcMain.handle('remove-scan', async (_event, abbr) => {
+  const code = String(abbr || '').toLowerCase();
+  if (!code) return { ok: false };
+  try {
+    const dir = dossierScans();
+    if (!fs.existsSync(dir)) return { ok: true };
+    const existing = fs.readdirSync(dir).filter((f) => f.toLowerCase().startsWith(code + '.'));
+    for (const f of existing) { try { fs.unlinkSync(path.join(dir, f)); } catch (e) { /* ignore */ } }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e && e.message || e) };
+  }
+});
+
 // Fenêtre d'impression cachée contenant UNIQUEMENT le document (valeurs seules)
 // offsetX / offsetY (mm) : décale l'ensemble des valeurs sur le papier pour caler
 // l'impression sur le formulaire pré-imprimé (guide-papier / orientation 180°).
+const CSS_IMPRESSION = (widthMm: number, heightMm: number) =>
+  `@page{size:${widthMm}mm ${heightMm}mm;margin:0}*{margin:0;padding:0;box-sizing:border-box}html,body{width:${widthMm}mm;height:${heightMm}mm;margin:0;padding:0;background:#fff;font-family:Arial,sans-serif;overflow:hidden}body{display:flex;align-items:flex-start;justify-content:flex-start}`;
+
 function creerFenetreImpression(html, widthMm, heightMm, deviceName, copies, color, offsetX, offsetY, cb) {
-  const css = `@page{size:${widthMm}mm ${heightMm}mm;margin:0}*{margin:0;padding:0;box-sizing:border-box}html,body{width:${widthMm}mm;height:${heightMm}mm;margin:0;padding:0;background:#fff;font-family:Arial,sans-serif;overflow:hidden}body{display:flex;align-items:flex-start;justify-content:flex-start}`;
+  const css = CSS_IMPRESSION(widthMm, heightMm);
   const decalage = (offsetX && offsetY)
     ? `<div style="width:${widthMm}mm;height:${heightMm}mm;transform:translate(${offsetX}mm,${offsetY}mm)">${html}</div>`
     : html;

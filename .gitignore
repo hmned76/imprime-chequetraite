@@ -6,3 +6,6 @@ android/
 kembyela_*.txt
 .DS_Store
 Thumbs.db
+
+# Documents internes (à ne pas publier)
+imprime-cheque-traite.md

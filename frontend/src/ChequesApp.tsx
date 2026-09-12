@@ -220,6 +220,29 @@ async function ensureChequeBank(abbr: string): Promise<string> {
 }
 function getChequeBank(abbr: string): string { return abbr ? (chequeBankData[(abbr || '').toLowerCase()] || '') : '' }
 
+// Fond de chèque synthétique (SVG) : utilisé quand aucune image (scan ou intégrée)
+// n'existe pour la banque. Mise en page standard BCT, nom de la banque affiché.
+function svgChequeBg(abbr: string, nom: string): string {
+  const name = (nom || abbr || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='1760' height='800' viewBox='0 0 1760 800'>
+  <rect width='1760' height='800' fill='#ffffff'/>
+  <rect x='4' y='4' width='1752' height='792' fill='none' stroke='#b8c4d0' stroke-width='4'/>
+  <rect x='180' y='60' width='900' height='90' rx='10' fill='#f0f4f8' stroke='#b8c4d0' stroke-width='3'/>
+  <text x='630' y='130' text-anchor='middle' font-family='Arial, sans-serif' font-size='54' font-weight='bold' fill='#274d73' letter-spacing='2'>${name}</text>
+  <text x='88' y='212' font-family='Arial, sans-serif' font-size='42' font-weight='bold' fill='#333' letter-spacing='4'>CH&Eacute;QUE N&ordm;</text>
+  <line x1='120' y1='240' x2='1640' y2='240' stroke='#c8d2dc' stroke-width='3'/>
+  <rect x='120' y='290' width='1100' height='110' rx='8' fill='#fbfcfd' stroke='#c8d2dc' stroke-width='3'/>
+  <text x='140' y='350' font-family='Arial, sans-serif' font-size='40' fill='#274d73'>Payez contre ce ch&egrave;que non endossable&nbsp;:</text>
+  <text x='300' y='520' font-family='Arial, sans-serif' font-size='40' fill='#333'>A l&rsquo;ordre de&nbsp;:</text>
+  <text x='120' y='640' font-family='Arial, sans-serif' font-size='40' fill='#333'>Ville&nbsp;:</text>
+  <text x='1180' y='640' font-family='Arial, sans-serif' font-size='40' fill='#333'>Date&nbsp;:</text>
+  <rect x='1560' y='700' width='170' height='70' fill='none' stroke='#c8d2dc' stroke-width='3'/>
+  <text x='1645' y='745' text-anchor='middle' font-family='Courier New, monospace' font-size='36' fill='#999'>0000000</text>
+  <line x1='120' y1='280' x2='1640' y2='280' stroke='#e5ebf1' stroke-width='3'/>
+</svg>`
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg)
+}
+
 interface CompteForm {
   id: string
   titulaire: string
@@ -527,9 +550,31 @@ function AppPrincipal({ compte, onBack }: { compte: CompteForm; onBack: () => vo
     banque: (BANQUES.find(b => b.code === compte.banqueCode) || { nom: '' }).nom,
     protestable: true,
     langue: 'fr',
-  })
+    })
 
-  const [traite, setTraite] = useState<TraiteForm>(traiteVide())
+    // ==== Validation bancaire ====
+    const MONTANT_MAX_CHEQUE = 30000
+
+    function verifierRIB(rib: string): boolean {
+      const clean = rib.replace(/\s/g, '')
+      if (!/^\d{20}$/.test(clean)) return false
+      const numeric = parseInt(clean.slice(0, 19), 10)
+      if (isNaN(numeric)) return false
+      const cleCalculee = (97 - (numeric % 97)) % 97
+      const cleDonnee = parseInt(clean.slice(19, 20), 10)
+      return cleCalculee === cleDonnee
+    }
+
+    function verifierMontantCheque(montant: string): { ok: boolean; msg?: string } {
+      const m = parseFloat(montant)
+      if (isNaN(m) || m <= 0) return { ok: false, msg: 'Montant invalide' }
+      if (m > MONTANT_MAX_CHEQUE) return { ok: false, msg: `Montant dépasse le plafond de ${MONTANT_MAX_CHEQUE} DT` }
+      return { ok: true }
+    }
+
+    const [erreurForm, setErreurForm] = useState<string | null>(null)
+
+    const [traite, setTraite] = useState<TraiteForm>(traiteVide())
 
   const [impression, setImpression] = useState<{ html: string; w: number; h: number } | null>(null)
   const [impPrimantes, setImpPrimantes] = useState<Imprimante[]>([])
@@ -591,6 +636,32 @@ function AppPrincipal({ compte, onBack }: { compte: CompteForm; onBack: () => vo
   const banqueChoisie = useMemo(() => BANQUES.find(b => b.code === compte.banqueCode), [compte.banqueCode])
   const [, forceRerender] = useState(0)
   useEffect(() => { ensureChequeBank(banqueChoisie?.abbr || '').then(() => forceRerender(n => n + 1)) }, [banqueChoisie?.abbr])
+
+  // Scans de chèques importés par banque (data URL, priorité > image intégrée > SVG)
+  const [scans, setScans] = useState<Record<string, string>>({})
+  const chargerScan = useCallback((abbr: string) => {
+    const api = (window as any).electronAPI
+    if (!abbr || !api || typeof api.getChequeScan !== 'function') return
+    api.getChequeScan(abbr).then((d: string) => {
+      if (d) setScans(prev => ({ ...prev, [abbr.toLowerCase()]: d }))
+      else setScans(prev => { const p = { ...prev }; delete p[abbr.toLowerCase()]; return p })
+    }).catch(() => {})
+  }, [])
+  useEffect(() => { chargerScan(banqueChoisie?.abbr || '') }, [banqueChoisie?.abbr, chargerScan])
+  const importerScan = useCallback(async (abbr: string) => {
+    const api = (window as any).electronAPI
+    if (!abbr || !api || typeof api.importScan !== 'function') { notif('Scan indisponible en navigateur'); return }
+    const res = await api.importScan(abbr)
+    if (res && res.ok) { chargerScan(abbr); notif('Scan importé ✓') }
+    else if (res && res.canceled) { /* annulé */ }
+    else notif('Échec de l\'import : ' + (res && res.error || 'erreur'))
+  }, [chargerScan, notif])
+  const retirerScan = useCallback(async (abbr: string) => {
+    const api = (window as any).electronAPI
+    if (!abbr || !api || typeof api.removeScan !== 'function') return
+    const res = await api.removeScan(abbr)
+    if (res && res.ok) { chargerScan(abbr); notif('Scan supprimé') }
+  }, [chargerScan, notif])
   const rtlCheque = cheque.langue === 'ar'
   const mlCheque = useMemo(() => montantEnLettres(parseFloat(cheque.montantChiffres) || 0), [cheque.montantChiffres])
   const mlChequeFinal = useMemo(() => (rtlCheque ? montantEnLettresArabes(parseFloat(cheque.montantChiffres) || 0) : mlCheque), [rtlCheque, mlCheque, cheque.montantChiffres])
@@ -609,19 +680,24 @@ function AppPrincipal({ compte, onBack }: { compte: CompteForm; onBack: () => vo
 
   const saveCheque = useCallback(() => {
     if (!cheque.beneficiaire || !cheque.montantChiffres) return
+    const v = verifierMontantCheque(cheque.montantChiffres)
+    if (!v.ok) { setErreurForm(v.msg || 'Erreur'); return }
     const item: HistoriqueItem = { id: Date.now(), type: 'cheque', date: cheque.date, beneficiaire: cheque.beneficiaire, montant: cheque.montantChiffres, banque: banqueChoisie?.nom, numeroCheque: cheque.numeroCheque }
     const list = [item, ...historique]
     setHistorique(list)
     saveHistorique(list)
+    setErreurForm(null)
     setShowApercu(true)
   }, [cheque, banqueChoisie, historique])
 
   const saveTraite = useCallback(() => {
     if (!traite.nomTire || !traite.montantChiffres) return
+    if (traite.rib && !verifierRIB(traite.rib)) { setErreurForm('RIB invalide — vérifiez les 20 chiffres et la clé de contrôle'); return }
     const item: HistoriqueItem = { id: Date.now(), type: 'traite', date: traite.dateEdition, beneficiaire: traite.nomTire, montant: traite.montantChiffres, banque: traite.domiciliation || traite.banque }
     const list = [item, ...historique]
     setHistorique(list)
     saveHistorique(list)
+    setErreurForm(null)
     setShowApercu(true)
   }, [traite, historique])
 
@@ -682,7 +758,7 @@ function AppPrincipal({ compte, onBack }: { compte: CompteForm; onBack: () => vo
           <div className="flex items-center gap-3">
             <div className="bg-white/10 p-2 rounded-lg"><FaExchangeAlt className="text-xl" /></div>
             <div>
-              <h1 className="text-2xl font-bold">ImprimCheques</h1>
+<h1 className="text-2xl font-bold flex items-center gap-2">ImprimCheques <span className="text-[11px] font-semibold bg-white/20 text-white px-2 py-0.5 rounded-full">v3.1.0</span></h1>
               <p className="text-blue-200 text-xs">{compte.titulaire} | {banqueChoisie?.abbr} | N° {compte.numeroCompte}</p>
             </div>
           </div>
@@ -745,8 +821,18 @@ function AppPrincipal({ compte, onBack }: { compte: CompteForm; onBack: () => vo
               </div>
             </div>
             <div className="flex-1 min-w-0">
-              <h2 className="text-lg font-bold text-gray-800 mb-3">Aperçu</h2>
-              <ApercuCheque cheque={cheque} compte={compte} banque={banqueChoisie} ml={mlChequeFinal} rtl={rtlCheque} />
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg font-bold text-gray-800">Aperçu</h2>
+                <div className="flex gap-2">
+                  {banqueChoisie?.abbr && scans[banqueChoisie.abbr.toLowerCase()] && (
+                    <button onClick={() => retirerScan(banqueChoisie.abbr)} className="text-[11px] bg-gray-200 hover:bg-gray-300 text-gray-700 px-2 py-1 rounded font-semibold transition">Retirer scan</button>
+                  )}
+                  {banqueChoisie?.abbr && (
+                    <button onClick={() => importerScan(banqueChoisie.abbr)} className="text-[11px] bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded font-semibold transition"><FaFolderOpen /> Importer scan chèque</button>
+                  )}
+                </div>
+              </div>
+              <ApercuCheque cheque={cheque} compte={compte} banque={banqueChoisie} ml={mlChequeFinal} rtl={rtlCheque} scan={banqueChoisie ? scans[banqueChoisie.abbr.toLowerCase()] : ''} />
             </div>
           </div>
         )}
@@ -865,7 +951,7 @@ function AppPrincipal({ compte, onBack }: { compte: CompteForm; onBack: () => vo
                 <button onClick={() => setShowApercu(false)} className="bg-gray-200 px-4 py-2 rounded-lg font-semibold hover:bg-gray-300">Fermer</button>
               </div>
             </div>
-            {page === 'cheque' || page === 'historique' ? <ApercuCheque cheque={cheque} compte={compte} banque={banqueChoisie} ml={mlChequeFinal} rtl={rtlCheque} /> : <ApercuTraite traite={traite} />}
+            {page === 'cheque' || page === 'historique' ? <ApercuCheque cheque={cheque} compte={compte} banque={banqueChoisie} ml={mlChequeFinal} rtl={rtlCheque} scan={banqueChoisie ? scans[banqueChoisie.abbr.toLowerCase()] : ''} /> : <ApercuTraite traite={traite} />}
           </div>
         </div>
       )}
@@ -1020,7 +1106,7 @@ function BoiteImpression({ html, w, h, printers, printerName, onPrinterName, cop
   )
 }
 
-function ApercuCheque({ cheque, compte, banque, ml, rtl }: { cheque: ChequeForm; compte: CompteForm; banque: typeof BANQUES[0] | undefined; ml: string; rtl: boolean }) {
+function ApercuCheque({ cheque, compte, banque, ml, rtl, scan }: { cheque: ChequeForm; compte: CompteForm; banque: typeof BANQUES[0] | undefined; ml: string; rtl: boolean; scan?: string }) {
   const prefMontant = rtl ? 'ادفعوا بمقتضى هذا الشيك غير القابل للتظهير :' : 'Payez contre ce chèque non endossable :'
   const libOrdre = rtl ? 'لأمر :' : "A l'ordre de :"
   const libVille = rtl ? 'البلدة :' : 'Ville :'
@@ -1029,7 +1115,7 @@ function ApercuCheque({ cheque, compte, banque, ml, rtl }: { cheque: ChequeForm;
   const mlText = ml ? ml : '……………………………'
   const m = cheque.montantChiffres ? parseFloat(cheque.montantChiffres).toFixed(3) : '__.___'
   const [ligne1, ligne2] = couperLignes(mlText)
-  const bg = banque ? getChequeBank(banque.abbr) : ''
+  const bg = scan || (banque ? getChequeBank(banque.abbr) : '') || (banque ? svgChequeBg(banque.abbr, banque.nom) : '')
 
   return (
     <div style={bg ? { width: '176mm', height: '80mm', fontFamily: 'Arial, sans-serif', border: '1px solid #999', overflow: 'hidden', position: 'relative', backgroundImage: `url(${bg})`, backgroundSize: 'cover', backgroundPosition: 'center', fontSize: '9px' } : { width: '176mm', height: '80mm', fontFamily: 'Arial, sans-serif', border: '1px solid #999', overflow: 'hidden', position: 'relative', background: 'white', fontSize: '9px' }}>

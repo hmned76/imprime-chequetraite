@@ -1,6 +1,6 @@
 {
   "name": "imprimechequetraite-tunisie",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "Application d'impression de chèques et traites bancaires pour la Tunisie",
   "main": "electron/main.js",
   "scripts": {
