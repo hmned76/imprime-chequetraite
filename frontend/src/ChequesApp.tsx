@@ -758,7 +758,7 @@ function AppPrincipal({ compte, onBack }: { compte: CompteForm; onBack: () => vo
           <div className="flex items-center gap-3">
             <div className="bg-white/10 p-2 rounded-lg"><FaExchangeAlt className="text-xl" /></div>
             <div>
-<h1 className="text-2xl font-bold flex items-center gap-2">ImprimCheques <span className="text-[11px] font-semibold bg-white/20 text-white px-2 py-0.5 rounded-full">v3.1.0</span></h1>
+<h1 className="text-2xl font-bold flex items-center gap-2">ImprimCheques <span className="text-[11px] font-semibold bg-white/20 text-white px-2 py-0.5 rounded-full">v3.1.1</span></h1>
               <p className="text-blue-200 text-xs">{compte.titulaire} | {banqueChoisie?.abbr} | N° {compte.numeroCompte}</p>
             </div>
           </div>
