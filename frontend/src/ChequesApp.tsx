@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
-import { FaPrint, FaCheck, FaFileInvoice, FaExchangeAlt, FaHistory, FaFileExcel, FaEye, FaBuilding, FaUser, FaCog, FaPlus, FaTrash, FaFolderOpen, FaExclamationTriangle } from 'react-icons/fa'
+import { FaPrint, FaCheck, FaFileInvoice, FaExchangeAlt, FaHistory, FaFileExcel, FaEye, FaBuilding, FaUser, FaCog, FaPlus, FaTrash, FaFolderOpen, FaExclamationTriangle, FaKey } from 'react-icons/fa'
+import { validateLicenceKey, readStoredLicence, storeLicence, clearLicence, type LicenceInfo } from './licence'
 
 interface Imprimante { name: string; displayName: string; isDefault: boolean }
 
@@ -330,11 +331,50 @@ export default function App() {
   const [comptes, setComptes] = useState<CompteForm[]>(loadComptes)
   const [compteSelectionne, setCompteSelectionne] = useState<CompteForm | null>(null)
   const [showCreation, setShowCreation] = useState(false)
+  const [licStatus, setLicStatus] = useState<'checking' | 'ok' | 'blocked'>('checking')
+  const [licReason, setLicReason] = useState<string>('')
+  const [licence, setLicence] = useState<LicenceInfo | null>(null)
+
+  useEffect(() => {
+    const stored = readStoredLicence()
+    if (!stored) { setLicStatus('blocked'); return }
+    validateLicenceKey(stored.company, stored.key).then(r => {
+      if (r.ok && r.licence) { setLicence(r.licence); setLicStatus('ok') }
+      else { setLicReason(r.reason === 'expired' ? 'expired' : ''); setLicStatus('blocked') }
+    })
+  }, [])
+
+  const onLicenceOk = (company: string, key: string, licenceInfo: LicenceInfo) => {
+    storeLicence(company, key, licenceInfo)
+    setLicence({ ...licenceInfo, company, key })
+    setLicReason('')
+    setLicStatus('ok')
+  }
+
+  const resetLicence = () => {
+    clearLicence()
+    setLicence(null)
+    setLicStatus('blocked')
+  }
+
+  if (licStatus === 'checking') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-900 via-blue-800 to-blue-900 flex items-center justify-center">
+        <div className="text-blue-200 text-lg animate-pulse">ImprimChèques…</div>
+      </div>
+    )
+  }
+
+  if (licStatus !== 'ok') {
+    return <LicenceGate onOk={onLicenceOk} initialError={licReason === 'expired' ? "Votre période d'essai de 5 jours a expiré. Demandez une clé définitive à votre revendeur." : ''} />
+  }
 
   if (compteSelectionne) {
     return <AppPrincipal
       compte={compteSelectionne}
       onBack={() => setCompteSelectionne(null)}
+      licence={licence}
+      onResetLicence={resetLicence}
     />
   }
 
@@ -361,6 +401,97 @@ export default function App() {
       saveComptes(list)
     }}
   />
+}
+
+function LicenceGate({ onOk, initialError }: { onOk: (company: string, key: string, licence: LicenceInfo) => void; initialError: string }) {
+  const [company, setCompany] = useState<string>(() => { try { return readStoredLicence()?.company || '' } catch { return '' } })
+  const [key, setKey] = useState('')
+  const [error, setError] = useState<string>(initialError)
+  const [busy, setBusy] = useState(false)
+
+  const reactiver = async () => {
+    const c = company.trim()
+    const k = key.trim()
+    if (!c) { setError('Saisissez le nom de votre société.'); return }
+    if (!k) { setError('Saisissez votre clé de licence (elle commence par ICT1).'); return }
+    setBusy(true)
+    const r = await validateLicenceKey(c, k)
+    setBusy(false)
+    if (r.ok && r.licence) { setError(''); onOk(c, k, r.licence); return }
+    setError(
+      r.reason === 'company'
+        ? "Cette clé ne correspond pas au nom de société saisi."
+        : r.reason === 'expired'
+          ? "Votre période d'essai de 5 jours a expiré. Demandez une clé définitive à votre revendeur."
+          : "Clé invalide. Vérifiez le nom de société et la clé."
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-900 via-blue-800 to-blue-900 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+        <div className="p-8 text-center">
+          <div className="w-16 h-16 mx-auto rounded-2xl bg-blue-900 flex items-center justify-center text-3xl text-white mb-4"><FaKey /></div>
+          <h1 className="text-2xl font-bold text-gray-800">Activation requise</h1>
+          <p className="text-gray-500 text-sm mt-1 mb-6">Entrez votre clé de licence pour activer le logiciel.</p>
+          <div className="text-left space-y-4">
+            <div>
+              <label className="block text-sm font-semibold text-gray-600 mb-1">Nom de votre société</label>
+              <input
+                value={company}
+                onChange={e => setCompany(e.target.value)}
+                placeholder="Ex : Ma Société"
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-600"
+                onKeyDown={e => { if (e.key === 'Enter') reactiver() }}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-600 mb-1">Clé de licence</label>
+              <textarea
+                value={key}
+                onChange={e => setKey(e.target.value)}
+                rows={3}
+                placeholder="ICT1.…"
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-xs font-mono outline-none focus:ring-2 focus:ring-blue-600 resize-y break-all"
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) reactiver() }}
+              />
+            </div>
+            {error && <p className="text-red-600 text-xs font-semibold">{error}</p>}
+          </div>
+          <button
+            onClick={reactiver}
+            disabled={busy}
+            className="w-full mt-6 py-3 rounded-lg bg-blue-700 hover:bg-blue-800 text-white font-bold text-base disabled:opacity-50"
+          >{busy ? 'Vérification…' : 'Activer'}</button>
+          <p className="text-gray-400 text-[11px] mt-4">Pas de clé ? Contactez votre revendeur.</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function LicenceModal({ licence, onClose, onReset }: { licence: LicenceInfo | null; onClose: () => void; onReset: () => void }) {
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
+        <h2 className="text-lg font-bold text-gray-800 mb-3 flex items-center gap-2"><FaKey className="text-amber-500" /> Licence</h2>
+        {licence ? (
+          <div className="space-y-1 text-sm border rounded p-3 bg-gray-50 mb-4">
+            <div><span className="text-gray-500">Société : </span><span className="font-bold">{licence.company}</span></div>
+            <div><span className="text-gray-500">Type : </span><span className="font-bold">{licence.type === 'permanent' ? 'Licence définitive' : 'Essai'}</span></div>
+            <div><span className="text-gray-500">Expiration : </span><span className="font-bold">{licence.expiresAt ? new Date(licence.expiresAt).toLocaleDateString('fr-FR') : 'Sans expiration'}</span></div>
+            <div className="text-[11px] text-gray-400 break-all">N° {licence.licenseId}</div>
+          </div>
+        ) : (
+          <p className="text-sm text-gray-500 mb-4">Aucune licence enregistrée.</p>
+        )}
+        <div className="flex gap-2 justify-end">
+          <button onClick={onClose} className="px-4 py-2 rounded text-sm font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700">Fermer</button>
+          <button onClick={onReset} className="px-4 py-2 rounded text-sm font-semibold bg-red-500 hover:bg-red-600 text-white">Retirer la licence</button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function PageAccueil({ comptes, onSelect, onNew, onDelete }: {
@@ -519,8 +650,9 @@ function PageCreationCompte({ onCreated, onBack }: { onCreated: (c: CompteForm) 
   )
 }
 
-function AppPrincipal({ compte, onBack }: { compte: CompteForm; onBack: () => void }) {
+function AppPrincipal({ compte, onBack, licence, onResetLicence }: { compte: CompteForm; onBack: () => void; licence?: LicenceInfo | null; onResetLicence?: () => void }) {
   const [page, setPage] = useState<'cheque' | 'traite' | 'historique'>('cheque')
+  const [showLicence, setShowLicence] = useState(false)
   const [showApercu, setShowApercu] = useState(false)
 
   const [cheque, setCheque] = useState<ChequeForm>({
@@ -558,11 +690,7 @@ function AppPrincipal({ compte, onBack }: { compte: CompteForm; onBack: () => vo
     function verifierRIB(rib: string): boolean {
       const clean = rib.replace(/\s/g, '')
       if (!/^\d{20}$/.test(clean)) return false
-      const numeric = parseInt(clean.slice(0, 19), 10)
-      if (isNaN(numeric)) return false
-      const cleCalculee = (97 - (numeric % 97)) % 97
-      const cleDonnee = parseInt(clean.slice(19, 20), 10)
-      return cleCalculee === cleDonnee
+      return BigInt(clean) % 97n === 0n
     }
 
     function verifierMontantCheque(montant: string): { ok: boolean; msg?: string } {
@@ -573,7 +701,6 @@ function AppPrincipal({ compte, onBack }: { compte: CompteForm; onBack: () => vo
     }
 
     const [erreurForm, setErreurForm] = useState<string | null>(null)
-
     const [traite, setTraite] = useState<TraiteForm>(traiteVide())
 
   const [impression, setImpression] = useState<{ html: string; w: number; h: number } | null>(null)
@@ -767,6 +894,7 @@ function AppPrincipal({ compte, onBack }: { compte: CompteForm; onBack: () => vo
             <button onClick={() => setPage('traite')} className={`px-3 py-2 rounded text-sm font-semibold flex items-center gap-1.5 transition ${page === 'traite' ? 'bg-white text-amber-900' : 'bg-white/10 hover:bg-white/20'}`}><FaFileInvoice /> Traite</button>
             <button onClick={() => setPage('historique')} className={`px-3 py-2 rounded text-sm font-semibold flex items-center gap-1.5 transition ${page === 'historique' ? 'bg-white text-green-900' : 'bg-white/10 hover:bg-white/20'}`}><FaHistory /> Historique ({historique.length})</button>
             <button onClick={onBack} className="px-3 py-2 rounded text-sm font-semibold bg-white/10 hover:bg-red-500/80 transition flex items-center gap-1.5"><FaCog /> Comptes</button>
+            <button onClick={() => setShowLicence(true)} className="px-3 py-2 rounded text-sm font-semibold bg-white/10 hover:bg-amber-500/80 transition flex items-center gap-1.5"><FaKey /> Licence</button>
           </div>
         </div>
       </header>
@@ -815,6 +943,9 @@ function AppPrincipal({ compte, onBack }: { compte: CompteForm; onBack: () => vo
                   </div>
                 </div>
               </div>
+              {erreurForm && (
+                <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">⚠️ {erreurForm}</div>
+              )}
               <div className="flex gap-2">
                 <button onClick={() => setShowApercu(true)} className="flex-1 flex items-center justify-center gap-2 bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition shadow"><FaEye /> Aperçu</button>
                 <button onClick={saveCheque} className="flex-1 flex items-center justify-center gap-2 bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700 transition shadow"><FaPrint /> Enregistrer & Imprimer</button>
@@ -926,6 +1057,9 @@ function AppPrincipal({ compte, onBack }: { compte: CompteForm; onBack: () => vo
                   }} />
                 </details>
               </div>
+              {erreurForm && (
+                <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">⚠️ {erreurForm}</div>
+              )}
               <div className="flex gap-2">
                 <button onClick={() => setShowApercu(true)} className="flex-1 flex items-center justify-center gap-2 bg-amber-600 text-white py-3 rounded-lg font-bold hover:bg-amber-700 transition shadow"><FaEye /> Aperçu</button>
                 <button onClick={saveTraite} className="flex-1 flex items-center justify-center gap-2 bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700 transition shadow"><FaPrint /> Enregistrer & Imprimer</button>
@@ -982,6 +1116,14 @@ function AppPrincipal({ compte, onBack }: { compte: CompteForm; onBack: () => vo
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] bg-gray-900 text-white text-sm px-5 py-3 rounded-xl shadow-2xl">
           {toast}
         </div>
+      )}
+
+      {showLicence && (
+        <LicenceModal
+          licence={licence || null}
+          onClose={() => setShowLicence(false)}
+          onReset={() => { setShowLicence(false); if (onResetLicence) onResetLicence() }}
+        />
       )}
     </div>
   )

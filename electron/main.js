@@ -179,7 +179,7 @@ ipcMain.handle('remove-scan', async (_event, abbr) => {
 // Fenêtre d'impression cachée contenant UNIQUEMENT le document (valeurs seules)
 // offsetX / offsetY (mm) : décale l'ensemble des valeurs sur le papier pour caler
 // l'impression sur le formulaire pré-imprimé (guide-papier / orientation 180°).
-const CSS_IMPRESSION = (widthMm: number, heightMm: number) =>
+const CSS_IMPRESSION = (widthMm, heightMm) =>
   `@page{size:${widthMm}mm ${heightMm}mm;margin:0}*{margin:0;padding:0;box-sizing:border-box}html,body{width:${widthMm}mm;height:${heightMm}mm;margin:0;padding:0;background:#fff;font-family:Arial,sans-serif;overflow:hidden}body{display:flex;align-items:flex-start;justify-content:flex-start}`;
 
 function creerFenetreImpression(html, widthMm, heightMm, deviceName, copies, color, offsetX, offsetY, cb) {
