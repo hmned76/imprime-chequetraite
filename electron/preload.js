@@ -20,5 +20,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   removeScan: (abbr) => {
     return ipcRenderer.invoke('remove-scan', abbr);
+  },
+  getVersion: () => {
+    return ipcRenderer.invoke('get-version');
+  },
+  openExternal: (url) => {
+    return ipcRenderer.invoke('open-external', url);
   }
 });

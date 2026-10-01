@@ -2,6 +2,16 @@ import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { FaPrint, FaCheck, FaFileInvoice, FaExchangeAlt, FaHistory, FaFileExcel, FaEye, FaBuilding, FaUser, FaCog, FaPlus, FaTrash, FaFolderOpen, FaExclamationTriangle, FaKey } from 'react-icons/fa'
 import { validateLicenceKey, readStoredLicence, storeLicence, clearLicence, type LicenceInfo } from './licence'
 
+/* ── SAV : ouvre le formulaire du site marketing dans le navigateur.
+   ⚠️ URL du site : à changer en https://… quand le site sera en ligne
+   (même valeur que UPDATE_BASE dans electron/main.js). */
+const SAV_URL = 'http://localhost:8020/sav?produit=imprime-chequetraite&version=3.2.0'
+function openSav() {
+  const api = (window as any).electronAPI
+  if (api && typeof api.openExternal === 'function') api.openExternal(SAV_URL)
+  else window.open(SAV_URL, '_blank')
+}
+
 interface Imprimante { name: string; displayName: string; isDefault: boolean }
 
 const RE_ARA = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/
@@ -471,6 +481,13 @@ function LicenceGate({ onOk, initialError }: { onOk: (company: string, key: stri
 }
 
 function LicenceModal({ licence, onClose, onReset }: { licence: LicenceInfo | null; onClose: () => void; onReset: () => void }) {
+  const [appVersion, setAppVersion] = useState('')
+  useEffect(() => {
+    const api = (window as any).electronAPI
+    if (api && typeof api.getVersion === 'function') {
+      api.getVersion().then((v: string) => setAppVersion(v || '')).catch(() => {})
+    }
+  }, [])
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
@@ -480,11 +497,16 @@ function LicenceModal({ licence, onClose, onReset }: { licence: LicenceInfo | nu
             <div><span className="text-gray-500">Société : </span><span className="font-bold">{licence.company}</span></div>
             <div><span className="text-gray-500">Type : </span><span className="font-bold">{licence.type === 'permanent' ? 'Licence définitive' : 'Essai'}</span></div>
             <div><span className="text-gray-500">Expiration : </span><span className="font-bold">{licence.expiresAt ? new Date(licence.expiresAt).toLocaleDateString('fr-FR') : 'Sans expiration'}</span></div>
+            <div><span className="text-gray-500">Version : </span><span className="font-bold">{appVersion || '3.2.0'}</span></div>
             <div className="text-[11px] text-gray-400 break-all">N° {licence.licenseId}</div>
           </div>
         ) : (
           <p className="text-sm text-gray-500 mb-4">Aucune licence enregistrée.</p>
         )}
+        <div className="flex items-center justify-between text-xs text-gray-400 mb-4 px-1">
+          <span>Mises à jour automatiques</span>
+          <button onClick={openSav} className="text-blue-600 underline hover:text-blue-800 font-semibold">🛠️ Signaler un défaut</button>
+        </div>
         <div className="flex gap-2 justify-end">
           <button onClick={onClose} className="px-4 py-2 rounded text-sm font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700">Fermer</button>
           <button onClick={onReset} className="px-4 py-2 rounded text-sm font-semibold bg-red-500 hover:bg-red-600 text-white">Retirer la licence</button>
@@ -546,6 +568,11 @@ function PageAccueil({ comptes, onSelect, onNew, onDelete }: {
               })}
             </div>
           )}
+          <div className="text-center mt-5 pt-3 border-t border-gray-100">
+            <button onClick={openSav} className="text-sm text-blue-600 underline hover:text-blue-800 font-semibold">
+              🛠️ Signaler un défaut (SAV)
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -885,7 +912,7 @@ function AppPrincipal({ compte, onBack, licence, onResetLicence }: { compte: Com
           <div className="flex items-center gap-3">
             <div className="bg-white/10 p-2 rounded-lg"><FaExchangeAlt className="text-xl" /></div>
             <div>
-<h1 className="text-2xl font-bold flex items-center gap-2">ImprimCheques <span className="text-[11px] font-semibold bg-white/20 text-white px-2 py-0.5 rounded-full">v3.1.1</span></h1>
+<h1 className="text-2xl font-bold flex items-center gap-2">ImprimCheques <span className="text-[11px] font-semibold bg-white/20 text-white px-2 py-0.5 rounded-full">v3.2.0</span></h1>
               <p className="text-blue-200 text-xs">{compte.titulaire} | {banqueChoisie?.abbr} | N° {compte.numeroCompte}</p>
             </div>
           </div>
@@ -895,6 +922,7 @@ function AppPrincipal({ compte, onBack, licence, onResetLicence }: { compte: Com
             <button onClick={() => setPage('historique')} className={`px-3 py-2 rounded text-sm font-semibold flex items-center gap-1.5 transition ${page === 'historique' ? 'bg-white text-green-900' : 'bg-white/10 hover:bg-white/20'}`}><FaHistory /> Historique ({historique.length})</button>
             <button onClick={onBack} className="px-3 py-2 rounded text-sm font-semibold bg-white/10 hover:bg-red-500/80 transition flex items-center gap-1.5"><FaCog /> Comptes</button>
             <button onClick={() => setShowLicence(true)} className="px-3 py-2 rounded text-sm font-semibold bg-white/10 hover:bg-amber-500/80 transition flex items-center gap-1.5"><FaKey /> Licence</button>
+            <button onClick={openSav} title="Signaler un défaut sur le SAV du site" className="px-3 py-2 rounded text-sm font-semibold bg-white/10 hover:bg-red-500/80 transition flex items-center gap-1.5"><FaExclamationTriangle /> SAV</button>
           </div>
         </div>
       </header>

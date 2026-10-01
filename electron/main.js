@@ -1,7 +1,17 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+
+/* ── Mise à jour automatique ──────────────────────────────────────────────
+   Au lancement (après 12 s), l'app vérifie le manifeste du site :
+   <UPDATE_BASE>/updates/<slug>/manifest.json → si version plus récente,
+   téléchargement + remplacement du .exe + redémarrage, tout seul.
+   ⚠️ UPDATE_BASE = URL du site marketing — à changer en https://… quand
+   le site sera en ligne public (idem SAV_URL dans frontend/src/ChequesApp.tsx). */
+const UPDATE_BASE = 'http://localhost:8020';
+const UPDATE_SLUG = 'imprime-chequetraite';
+const UPDATE_FILE = 'ImprimChequesTraites.exe';
 
 let mainWindow;
 
@@ -112,6 +122,19 @@ ipcMain.handle('get-printers', async () => {
     console.log('[print] getPrinters a échoué', e);
     return [];
   }
+});
+
+// Version de l'app (affichée dans Licence) + ouverture d'un lien dans le navigateur
+ipcMain.handle('get-version', () => {
+  try { return app.getVersion(); } catch (e) { return ''; }
+});
+
+ipcMain.handle('open-external', (_event, url) => {
+  try {
+    const u = String(url || '');
+    if (/^https?:\/\//i.test(u)) { shell.openExternal(u); return true; }
+    return false;
+  } catch (e) { return false; }
 });
 
 // ==== Scans de chèques par banque (aperçu à l'écran uniquement) ====
@@ -245,7 +268,62 @@ ipcMain.on('print-html', (event, { html, w = 176, h = 80, deviceName, copies, co
   });
 });
 
-app.whenReady().then(createWindow);
+/* ── Mise à jour automatique : vérifie le site, télécharge, remplace, relance ── */
+function startUpdateCheck() {
+  const updater = require('./updater');
+  let updWin = null;
+  const html = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><style>"
+    + "body{margin:0;background:#1f1a14;color:#fff;font:14px/1.45 'Segoe UI',sans-serif;"
+    + "display:flex;align-items:center;justify-content:center;height:100vh;-webkit-user-select:none}"
+    + ".card{width:100%;padding:20px 24px;box-sizing:border-box}"
+    + "h4{margin:0 0 6px;font-size:15px}p{margin:0 0 12px;font-size:12.5px;opacity:.75}"
+    + ".bar{height:8px;background:rgba(255,255,255,.14);border-radius:99px;overflow:hidden}"
+    + ".fill{height:100%;width:0;background:linear-gradient(90deg,#2563eb,#60a5fa);border-radius:99px;transition:width .25s}"
+    + ".pct{margin-top:8px;font-size:12px;opacity:.8;text-align:right}"
+    + "</style></head><body><div class=\"card\"><h4>Mise à jour automatique…</h4>"
+    + "<p>Téléchargement de la nouvelle version — l'application redémarrera toute seule.</p>"
+    + "<div class=\"bar\"><div class=\"fill\" id=\"f\"></div></div>"
+    + "<div class=\"pct\" id=\"p\">0 %</div>"
+    + "<script>function setPct(p){document.getElementById('f').style.width=p+'%';"
+    + "document.getElementById('p').textContent=p+' %'}</script></div></body></html>";
+  updater.startAutoUpdate({
+    baseUrl: UPDATE_BASE,
+    slug: UPDATE_SLUG,
+    fileName: UPDATE_FILE,
+    currentVersion: app.getVersion(),
+    isPackaged: app.isPackaged,
+    onStart: function () {
+      try {
+        updWin = new BrowserWindow({
+          width: 440, height: 170, resizable: false, frame: false,
+          alwaysOnTop: true, minimizable: false, maximizable: false,
+          center: true, title: 'Mise à jour',
+          webPreferences: { nodeIntegration: false, contextIsolation: true },
+        });
+        updWin.on('closed', function () { updWin = null; });
+        updWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+      } catch (e) { updWin = null; }
+    },
+    onProgress: function (pct) {
+      if (updWin && !updWin.isDestroyed()) {
+        updWin.webContents
+          .executeJavaScript('setPct(' + Math.round((pct || 0) * 100) + ')')
+          .catch(function () {});
+      }
+    },
+    quit: function () {
+      try { if (updWin && !updWin.isDestroyed()) updWin.destroy(); } catch (e) { /* ignore */ }
+      app.quit();
+    },
+  }).catch(function (e) {
+    console.log('[update] abandon:', e && e.message);
+  });
+}
+
+app.whenReady().then(() => {
+  createWindow();
+  setTimeout(startUpdateCheck, 12000); // vérification mise à jour (lancement calme)
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
